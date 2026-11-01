@@ -1,5 +1,5 @@
 <?php
-// Instalador de Inspector de Plantas.
+// Instalador de Fioremi Inspector.
 // Sube este archivo y el .zip a la misma carpeta y abre /instalar.php en el navegador.
 // Descomprime la app, borra el .zip y se borra a sí mismo.
 
@@ -65,7 +65,7 @@ $url = $scheme . '://' . ($_SERVER['HTTP_HOST'] ?? 'localhost') . $base;
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Instalar Inspector de Plantas</title>
+  <title>Instalar Fioremi Inspector</title>
   <style>
     body { font: 17px/1.5 system-ui, sans-serif; background: #f6f4ec; color: #1f2a1f; margin: 0; padding: 24px; }
     .card { max-width: 560px; margin: 8vh auto; background: #fff; border-radius: 18px; padding: 28px; box-shadow: 0 4px 20px rgba(0,0,0,.08); }
@@ -88,7 +88,7 @@ $url = $scheme . '://' . ($_SERVER['HTTP_HOST'] ?? 'localhost') . $base;
     <?php if ($scheme !== 'https'): ?>
       <p class="warn">⚠️ Estás entrando sin HTTPS. Activa el certificado SSL gratuito en hPanel → Seguridad → SSL para que funcione la cámara.</p>
     <?php endif; ?>
-    <p><a class="btn" href="<?= htmlspecialchars($url) ?>">Abrir Inspector de Plantas</a></p>
+    <p><a class="btn" href="<?= htmlspecialchars($url) ?>">Abrir Fioremi Inspector</a></p>
   <?php else: ?>
     <h1>No se pudo instalar todavía</h1>
     <ul>

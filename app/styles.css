@@ -162,7 +162,7 @@ input:focus, select:focus, textarea:focus, .btn:focus-visible { outline: 3px sol
 .error-msg { color: var(--bad); font-size: 0.9rem; margin: 6px 0 10px; }
 
 .auth-wrap { max-width: 420px; margin: 7vh auto 0; }
-.auth-logo { width: 72px; height: 72px; margin: 0 auto 12px; }
+.auth-logo { width: 120px; height: 120px; margin: 0 auto 8px; }
 
 /* Selección de foto */
 .photo-drop {
@@ -315,3 +315,8 @@ dialog .modal-body { padding: 20px; max-height: 80vh; overflow-y: auto; }
 .wrap-text { overflow-wrap: anywhere; }
 @media (max-width: 420px) { .hide-xs { display: none; } .list > li { gap: 10px; } .list .avatar { width: 44px; height: 44px; } }
 .brand-kicker { font: 700 13px/1 var(--font-body); letter-spacing: .14em; text-transform: uppercase; color: var(--primary); margin: 0 0 8px; }
+.logo-img { object-fit: contain; }
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .logo-img { background: #FBF5F7; border-radius: 14px; padding: 3px; }
+}
+:root[data-theme="dark"] .logo-img { background: #FBF5F7; border-radius: 14px; padding: 3px; }

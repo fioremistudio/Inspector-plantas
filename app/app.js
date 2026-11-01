@@ -1,4 +1,4 @@
-// Inspector de Plantas: interfaz de una sola página sin dependencias.
+// Fioremi Inspector: interfaz de una sola página sin dependencias.
 
 // ---------- Utilidades ----------
 
@@ -335,8 +335,7 @@ async function maybeNotify(due) {
 
 function authShell(title, subtitle, form, footer = '') {
   render(html`<div class="auth-wrap">
-    <img class="auth-logo" src="icons/icon.svg" alt="" />
-    <p class="center brand-kicker">Fioremi</p>
+    <img class="auth-logo logo-img" src="icons/logo.png" alt="Logo de Fioremi" />
     <h1 class="center">${title}</h1>
     <p class="center muted">${subtitle}</p>
     <div class="card">${form}</div>
@@ -371,7 +370,7 @@ function viewSetup() {
 function viewLogin() {
   const reg = state.status.allowRegistration;
   authShell(
-    'Inspector de Plantas',
+    'Fioremi Inspector',
     'Analiza tus plantas con inteligencia artificial.',
     html`<form id="f">
       <div class="field"><label for="email">Correo electrónico</label><input id="email" name="email" type="email" required autocomplete="email" /></div>

@@ -1,4 +1,4 @@
-# 🌿 Inspector de Plantas
+# 🌿 Fioremi Inspector
 
 Aplicación web (instalable en el celular) que analiza fotos de plantas con inteligencia artificial y te dice qué les pasa y cómo cuidarlas.
 
