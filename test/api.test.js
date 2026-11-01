@@ -1,37 +1,54 @@
-import { test, before, after } from 'node:test';
+// Pruebas del servidor PHP. Ejecutar con: npm test
+// Arrancan el servidor de desarrollo de PHP con una base de datos temporal.
+import { test, before, after, describe } from 'node:test';
 import assert from 'node:assert/strict';
+import { spawn, execFileSync } from 'node:child_process';
 import fs from 'node:fs';
+import http from 'node:http';
 import os from 'node:os';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 
-// Base de datos temporal y modo demostración (sin llamadas reales a la IA).
-const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'inspector-test-'));
-process.env.DATA_DIR = tmp;
-process.env.ANTHROPIC_API_KEY = '';
-process.env.DAILY_DIAGNOSIS_LIMIT = '3';
+const here = path.dirname(fileURLToPath(import.meta.url));
+const appDir = process.env.APP_DIR ? path.resolve(process.env.APP_DIR) : path.join(here, '..', 'app');
 
-const { createApp } = await import('../server/index.js');
-const { normalizeResult } = await import('../server/ai.js');
+// PNG de 1x1 píxel.
+const PNG =
+  'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==';
 
-let server;
-let base;
+async function freePort() {
+  const srv = http.createServer().listen(0);
+  await new Promise((r) => srv.once('listening', r));
+  const { port } = srv.address();
+  await new Promise((r) => srv.close(r));
+  return port;
+}
 
-before(async () => {
-  server = createApp().listen(0);
-  await new Promise((r) => server.once('listening', r));
-  base = `http://127.0.0.1:${server.address().port}`;
-});
-
-after(() => {
-  server.close();
-  fs.rmSync(tmp, { recursive: true, force: true });
-});
+async function startPhp(env) {
+  const port = await freePort();
+  const proc = spawn('php', ['-S', `127.0.0.1:${port}`, '-t', appDir, path.join(here, 'php-router.php')], {
+    env: { ...process.env, ...env },
+    stdio: ['ignore', 'ignore', 'pipe'],
+  });
+  let log = '';
+  proc.stderr.on('data', (d) => (log += d));
+  const base = `http://127.0.0.1:${port}`;
+  for (let i = 0; i < 50; i++) {
+    try {
+      await fetch(`${base}/api/auth/status`);
+      return { proc, base, log: () => log };
+    } catch {
+      await new Promise((r) => setTimeout(r, 100));
+    }
+  }
+  throw new Error(`El servidor PHP no arrancó:\n${log}`);
+}
 
 // Cliente HTTP mínimo que guarda la cookie de sesión.
-function client() {
+function client(getBase) {
   let cookie = '';
   return async (method, url, body) => {
-    const res = await fetch(base + url, {
+    const res = await fetch(getBase() + url, {
       method,
       headers: { ...(body ? { 'Content-Type': 'application/json' } : {}), ...(cookie ? { Cookie: cookie } : {}) },
       body: body ? JSON.stringify(body) : undefined,
@@ -39,177 +56,307 @@ function client() {
     const set = res.headers.get('set-cookie');
     if (set) cookie = set.split(';')[0];
     const data = res.headers.get('content-type')?.includes('json') ? await res.json() : null;
-    return { status: res.status, data };
+    return { status: res.status, data, headers: res.headers };
   };
 }
 
-// PNG de 1x1 píxel.
-const PNG =
-  'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==';
+describe('modo demostración', () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'inspector-test-'));
+  let srv;
+  const getBase = () => srv.base;
+  const admin = client(getBase);
+  const customer = client(getBase);
+  const stranger = client(getBase);
 
-const admin = client();
-const customer = client();
-const stranger = client();
-
-test('el primer usuario crea la cuenta de administración', async () => {
-  let r = await admin('GET', '/api/auth/status');
-  assert.equal(r.data.needsSetup, true);
-  assert.equal(r.data.demoMode, true);
-
-  r = await admin('POST', '/api/auth/setup', { name: 'Admin', email: 'admin@example.com', password: 'secreto123' });
-  assert.equal(r.status, 201);
-
-  r = await admin('GET', '/api/auth/status');
-  assert.equal(r.data.user.role, 'admin');
-  assert.equal(r.data.needsSetup, false);
-
-  r = await stranger('POST', '/api/auth/setup', { name: 'X', email: 'x@example.com', password: 'secreto123' });
-  assert.equal(r.status, 403, 'no se puede repetir la configuración inicial');
-});
-
-test('el registro está cerrado por defecto y el admin crea clientes', async () => {
-  let r = await stranger('POST', '/api/auth/register', { name: 'X', email: 'x@example.com', password: 'secreto123' });
-  assert.equal(r.status, 403);
-
-  r = await customer('POST', '/api/admin/users', { name: 'C', email: 'c@example.com', password: 'secreto123' });
-  assert.equal(r.status, 401, 'sin sesión no se accede al panel');
-
-  r = await admin('POST', '/api/admin/users', { name: 'Clienta', email: 'cliente@example.com', password: 'secreto123' });
-  assert.equal(r.status, 201);
-
-  r = await customer('POST', '/api/auth/login', { email: 'cliente@example.com', password: 'mal' });
-  assert.equal(r.status, 401);
-  r = await customer('POST', '/api/auth/login', { email: 'CLIENTE@example.com', password: 'secreto123' });
-  assert.equal(r.status, 200);
-
-  r = await customer('GET', '/api/admin/users');
-  assert.equal(r.status, 403, 'un cliente no entra al panel de administración');
-
-  r = await admin('PATCH', '/api/admin/settings', { allowRegistration: true });
-  r = await stranger('POST', '/api/auth/register', { name: 'Nuevo', email: 'nuevo@example.com', password: 'secreto123' });
-  assert.equal(r.status, 201);
-});
-
-test('flujo completo: analizar, guardar planta, recordatorios y evolución', async () => {
-  // Análisis creando una planta nueva.
-  let r = await customer('POST', '/api/diagnoses', { photo: PNG, new_plant_name: 'Potus del salón', symptoms: 'Hojas amarillas' });
-  assert.equal(r.status, 201);
-  assert.equal(r.data.demo, 1);
-  assert.ok(r.data.plant_id);
-  const plantId = r.data.plant_id;
-  const first = r.data;
-
-  // La planta tiene recordatorio de riego automático.
-  r = await customer('GET', `/api/plants/${plantId}`);
-  assert.equal(r.data.plant.name, 'Potus del salón');
-  assert.equal(r.data.plant.water_every_days, 8);
-  assert.equal(r.data.reminders.filter((x) => x.type === 'riego').length, 1);
-
-  // Activar recordatorios sugeridos (revisión y abono).
-  r = await customer('POST', `/api/diagnoses/${first.id}/apply`, { reminders: [0, 2] });
-  assert.equal(r.data.created, 2);
-  r = await customer('GET', '/api/reminders');
-  assert.equal(r.data.reminders.length, 3);
-
-  // Completar un recordatorio repetitivo crea el siguiente y lo apunta en el diario.
-  const abono = r.data.reminders.find((x) => x.type === 'abono');
-  r = await customer('POST', `/api/reminders/${abono.id}/done`);
-  assert.equal(r.status, 200);
-  r = await customer('GET', `/api/plants/${plantId}`);
-  assert.ok(r.data.care.some((c) => c.type === 'abono'));
-  assert.equal(r.data.reminders.filter((x) => x.type === 'abono').length, 1);
-
-  // Regar reprograma el riego.
-  r = await customer('POST', `/api/plants/${plantId}/care`, { type: 'riego' });
-  assert.equal(r.status, 201);
-  r = await customer('GET', `/api/plants/${plantId}`);
-  const riego = r.data.reminders.find((x) => x.type === 'riego');
-  assert.ok(riego.due_date > new Date().toISOString().slice(0, 10));
-  assert.ok(r.data.plant.last_watered_at);
-
-  // Segundo análisis de la misma planta: compara con el anterior.
-  r = await customer('POST', '/api/diagnoses', { photo: PNG, plant_id: plantId });
-  assert.equal(r.status, 201);
-  assert.ok(r.data.result.comparacion_anterior);
-  assert.ok(r.data.health_score > first.health_score);
-
-  r = await customer('GET', `/api/plants/${plantId}`);
-  assert.equal(r.data.diagnoses.length, 2);
-
-  // Las fotos solo las ve su dueño.
-  const photo = r.data.plant.photo;
-  r = await customer('GET', `/api/photos/${photo}`);
-  assert.equal(r.status, 200);
-  r = await stranger('GET', `/api/photos/${photo}`);
-  assert.equal(r.status, 404);
-  r = await stranger('GET', `/api/plants/${plantId}`);
-  assert.equal(r.status, 404, 'otro usuario no ve la planta');
-});
-
-test('análisis suelto que luego se guarda en una planta nueva', async () => {
-  let r = await stranger('POST', '/api/diagnoses', { photo: PNG });
-  assert.equal(r.data.plant_id, null);
-  r = await stranger('PATCH', `/api/diagnoses/${r.data.id}`, { new_plant: true });
-  assert.ok(r.data.plant_id);
-  r = await stranger('GET', '/api/plants');
-  assert.equal(r.data.length, 1);
-  assert.ok(r.data[0].photo);
-});
-
-test('límite diario de análisis para clientes', async () => {
-  // El cliente ya hizo 2; el límite de prueba es 3.
-  let r = await customer('POST', '/api/diagnoses', { photo: PNG });
-  assert.equal(r.status, 201);
-  r = await customer('POST', '/api/diagnoses', { photo: PNG });
-  assert.equal(r.status, 429);
-});
-
-test('validaciones de entrada', async () => {
-  let r = await stranger('POST', '/api/diagnoses', { photo: 'data:text/plain;base64,aGk=' });
-  assert.equal(r.status, 400);
-  r = await customer('POST', '/api/plants', { name: '' });
-  assert.equal(r.status, 400);
-  r = await admin('POST', '/api/admin/users', { name: 'Y', email: 'malo', password: 'secreto123' });
-  assert.equal(r.status, 400);
-  r = await admin('POST', '/api/admin/users', { name: 'Y', email: 'y@example.com', password: 'corta' });
-  assert.equal(r.status, 400);
-});
-
-test('debe quedar siempre un administrador activo', async () => {
-  const { data: users } = await admin('GET', '/api/admin/users');
-  const me = users.find((u) => u.role === 'admin');
-  const r = await admin('PATCH', `/api/admin/users/${me.id}`, { role: 'user' });
-  assert.equal(r.status, 400);
-});
-
-test('desactivar un usuario cierra su sesión', async () => {
-  const { data: users } = await admin('GET', '/api/admin/users');
-  const c = users.find((u) => u.email === 'cliente@example.com');
-  await admin('PATCH', `/api/admin/users/${c.id}`, { active: false });
-  const r = await customer('GET', '/api/plants');
-  assert.equal(r.status, 401);
-  const login = await customer('POST', '/api/auth/login', { email: 'cliente@example.com', password: 'secreto123' });
-  assert.equal(login.status, 403);
-});
-
-test('normalizeResult corrige valores fuera de lo esperado', () => {
-  const r = normalizeResult({
-    planta_identificada: { nombre_comun: 'x', nombre_cientifico: null, confianza: 'Alta' },
-    estado_general: 'MODERADO',
-    puntuacion_salud: 140,
-    problemas: [{ tipo: 'Daño físico', probabilidad: 'rarísima' }],
-    tratamiento: [{ cuando: 'esta semana' }],
-    recordatorios_sugeridos: [{ tipo: 'Revisión', titulo: 't', en_dias: -3, repetir_cada_dias: 0 }],
-    riego_cada_dias: 0,
+  before(async () => {
+    srv = await startPhp({ DATA_DIR: tmp, ANTHROPIC_API_KEY: '', DAILY_DIAGNOSIS_LIMIT: '3' });
   });
-  assert.equal(r.planta_identificada.confianza, 'alta');
-  assert.equal(r.estado_general, 'moderado');
-  assert.equal(r.puntuacion_salud, 100);
-  assert.equal(r.problemas[0].tipo, 'daño_fisico');
-  assert.equal(r.problemas[0].probabilidad, 'media');
-  assert.equal(r.tratamiento[0].cuando, 'esta_semana');
-  assert.equal(r.recordatorios_sugeridos[0].tipo, 'revision');
-  assert.equal(r.recordatorios_sugeridos[0].en_dias, 0);
-  assert.equal(r.recordatorios_sugeridos[0].repetir_cada_dias, null);
-  assert.equal(r.riego_cada_dias, null);
+  after(() => {
+    srv.proc.kill();
+    fs.rmSync(tmp, { recursive: true, force: true });
+  });
+
+  test('el primer usuario crea la cuenta de administración', async () => {
+    let r = await admin('GET', '/api/auth/status');
+    assert.equal(r.data.needsSetup, true);
+    assert.equal(r.data.demoMode, true);
+
+    r = await admin('POST', '/api/auth/setup', { name: 'Admin', email: 'admin@example.com', password: 'secreto123' });
+    assert.equal(r.status, 201);
+
+    r = await admin('GET', '/api/auth/status');
+    assert.equal(r.data.user.role, 'admin');
+    assert.equal(r.data.needsSetup, false);
+
+    r = await stranger('POST', '/api/auth/setup', { name: 'X', email: 'x@example.com', password: 'secreto123' });
+    assert.equal(r.status, 403, 'no se puede repetir la configuración inicial');
+  });
+
+  test('el registro está cerrado por defecto y el admin crea clientes', async () => {
+    let r = await stranger('POST', '/api/auth/register', { name: 'X', email: 'x@example.com', password: 'secreto123' });
+    assert.equal(r.status, 403);
+
+    r = await customer('POST', '/api/admin/users', { name: 'C', email: 'c@example.com', password: 'secreto123' });
+    assert.equal(r.status, 401, 'sin sesión no se accede al panel');
+
+    r = await admin('POST', '/api/admin/users', { name: 'Clienta', email: 'cliente@example.com', password: 'secreto123' });
+    assert.equal(r.status, 201);
+
+    r = await customer('POST', '/api/auth/login', { email: 'cliente@example.com', password: 'mal' });
+    assert.equal(r.status, 401);
+    r = await customer('POST', '/api/auth/login', { email: 'CLIENTE@example.com', password: 'secreto123' });
+    assert.equal(r.status, 200);
+    assert.match(r.headers.get('set-cookie'), /HttpOnly/i);
+
+    r = await customer('GET', '/api/admin/users');
+    assert.equal(r.status, 403, 'un cliente no entra al panel de administración');
+
+    await admin('PATCH', '/api/admin/settings', { allowRegistration: true });
+    r = await stranger('POST', '/api/auth/register', { name: 'Nuevo', email: 'nuevo@example.com', password: 'secreto123' });
+    assert.equal(r.status, 201);
+  });
+
+  test('flujo completo: analizar, guardar planta, recordatorios y evolución', async () => {
+    let r = await customer('POST', '/api/diagnoses', { photo: PNG, new_plant_name: 'Potus del salón', symptoms: 'Hojas amarillas' });
+    assert.equal(r.status, 201, JSON.stringify(r.data));
+    assert.equal(r.data.demo, 1);
+    assert.ok(r.data.plant_id);
+    assert.equal(r.data.cost_usd, undefined, 'el coste no se muestra al cliente');
+    const plantId = r.data.plant_id;
+    const first = r.data;
+
+    r = await customer('GET', `/api/plants/${plantId}`);
+    assert.equal(r.data.plant.name, 'Potus del salón');
+    assert.equal(r.data.plant.water_every_days, 8);
+    assert.equal(r.data.reminders.filter((x) => x.type === 'riego').length, 1);
+
+    r = await customer('POST', `/api/diagnoses/${first.id}/apply`, { reminders: [0, 2] });
+    assert.equal(r.data.created, 2);
+    r = await customer('GET', '/api/reminders');
+    assert.equal(r.data.reminders.length, 3);
+
+    const abono = r.data.reminders.find((x) => x.type === 'abono');
+    r = await customer('POST', `/api/reminders/${abono.id}/done`);
+    assert.equal(r.status, 200);
+    r = await customer('GET', `/api/plants/${plantId}`);
+    assert.ok(r.data.care.some((c) => c.type === 'abono'));
+    assert.equal(r.data.reminders.filter((x) => x.type === 'abono').length, 1, 'se crea el siguiente abono');
+
+    r = await customer('POST', `/api/plants/${plantId}/care`, { type: 'riego' });
+    assert.equal(r.status, 201);
+    r = await customer('GET', `/api/plants/${plantId}`);
+    const riego = r.data.reminders.find((x) => x.type === 'riego');
+    assert.ok(riego.due_date > new Date().toISOString().slice(0, 10), 'el riego se reprograma');
+    assert.ok(r.data.plant.last_watered_at);
+
+    r = await customer('POST', '/api/diagnoses', { photo: PNG, plant_id: plantId });
+    assert.equal(r.status, 201);
+    assert.ok(r.data.result.comparacion_anterior);
+    assert.ok(r.data.health_score > first.health_score);
+
+    r = await customer('GET', `/api/plants/${plantId}`);
+    assert.equal(r.data.diagnoses.length, 2);
+
+    const photo = r.data.plant.photo;
+    r = await customer('GET', `/api/photos/${photo}`);
+    assert.equal(r.status, 200);
+    r = await stranger('GET', `/api/photos/${photo}`);
+    assert.equal(r.status, 404, 'otro usuario no ve la foto');
+    r = await stranger('GET', `/api/plants/${plantId}`);
+    assert.equal(r.status, 404, 'otro usuario no ve la planta');
+  });
+
+  test('las carpetas privadas no son accesibles desde la web', async () => {
+    for (const url of ['/data/inspector.db', '/vendor/autoload.php', '/api/lib/core.php']) {
+      const r = await fetch(srv.base + url);
+      assert.notEqual(r.status, 200, url);
+    }
+  });
+
+  test('análisis suelto que luego se guarda en una planta nueva', async () => {
+    let r = await stranger('POST', '/api/diagnoses', { photo: PNG });
+    assert.equal(r.data.plant_id, null);
+    r = await stranger('PATCH', `/api/diagnoses/${r.data.id}`, { new_plant: true });
+    assert.ok(r.data.plant_id);
+    r = await stranger('GET', '/api/plants');
+    assert.equal(r.data.length, 1);
+    assert.ok(r.data[0].photo);
+  });
+
+  test('límite diario de análisis para clientes', async () => {
+    let r = await customer('POST', '/api/diagnoses', { photo: PNG });
+    assert.equal(r.status, 201);
+    r = await customer('POST', '/api/diagnoses', { photo: PNG });
+    assert.equal(r.status, 429);
+  });
+
+  test('validaciones de entrada', async () => {
+    let r = await stranger('POST', '/api/diagnoses', { photo: 'data:text/plain;base64,aGk=' });
+    assert.equal(r.status, 400);
+    r = await customer('POST', '/api/plants', { name: '' });
+    assert.equal(r.status, 400);
+    r = await admin('POST', '/api/admin/users', { name: 'Y', email: 'malo', password: 'secreto123' });
+    assert.equal(r.status, 400);
+    r = await admin('POST', '/api/admin/users', { name: 'Y', email: 'y@example.com', password: 'corta' });
+    assert.equal(r.status, 400);
+    r = await admin('PATCH', '/api/admin/settings', { apiKey: 'no-es-una-clave' });
+    assert.equal(r.status, 400);
+    r = await admin('PATCH', '/api/admin/settings', { model: 'otro-modelo' });
+    assert.equal(r.status, 400);
+    const res = await fetch(`${srv.base}/api/plants`, { method: 'POST', body: 'name=x', headers: { 'Content-Type': 'application/x-www-form-urlencoded' } });
+    assert.equal(res.status, 415, 'solo se aceptan peticiones JSON');
+  });
+
+  test('ajustes del panel de administración', async () => {
+    let r = await admin('PATCH', '/api/admin/settings', { model: 'claude-sonnet-5-5', dailyLimit: 7 });
+    assert.equal(r.status, 200);
+    r = await admin('GET', '/api/admin/overview');
+    assert.equal(r.data.settings.model, 'claude-sonnet-5-5');
+    assert.equal(r.data.settings.apiKeyMasked, '');
+    assert.equal(r.data.stats.costMonth, 0);
+    // DAILY_DIAGNOSIS_LIMIT en el entorno tiene prioridad sobre el panel.
+    assert.equal(r.data.settings.dailyLimit, 3);
+  });
+
+  test('debe quedar siempre un administrador activo', async () => {
+    const { data: users } = await admin('GET', '/api/admin/users');
+    const me = users.find((u) => u.role === 'admin');
+    const r = await admin('PATCH', `/api/admin/users/${me.id}`, { role: 'user' });
+    assert.equal(r.status, 400);
+  });
+
+  test('desactivar un usuario cierra su sesión', async () => {
+    const { data: users } = await admin('GET', '/api/admin/users');
+    const c = users.find((u) => u.email === 'cliente@example.com');
+    await admin('PATCH', `/api/admin/users/${c.id}`, { active: false });
+    const r = await customer('GET', '/api/plants');
+    assert.equal(r.status, 401);
+    const login = await customer('POST', '/api/auth/login', { email: 'cliente@example.com', password: 'secreto123' });
+    assert.equal(login.status, 403);
+  });
+});
+
+describe('análisis real contra un Anthropic simulado', () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'inspector-test-'));
+  let srv;
+  let fake;
+  const requests = [];
+  const admin = client(() => srv.base);
+
+  const answer = {
+    es_planta: true,
+    planta_identificada: { nombre_comun: 'Monstera', nombre_cientifico: 'Monstera deliciosa', confianza: 'Alta' },
+    estado_general: 'leve',
+    puntuacion_salud: 140,
+    resumen: 'Tiene algunas manchas por exceso de sol.',
+    problemas: [{ nombre: 'Quemadura solar', tipo: 'Luz', probabilidad: 'alta', sintomas_observados: ['Manchas'], explicacion: 'Sol directo.' }],
+    tratamiento: [{ paso: 'Mover', detalle: 'Aléjala de la ventana.', cuando: 'hoy' }],
+    prevencion: ['Luz indirecta'],
+    cuidados: { riego: 'Semanal', luz: 'Indirecta', humedad: 'Media', abono: 'Mensual' },
+    riego_cada_dias: 7,
+    recordatorios_sugeridos: [{ tipo: 'revision', titulo: 'Revisar hojas', en_dias: 7, repetir_cada_dias: null }],
+    comparacion_anterior: null,
+    calidad_foto: { adecuada: true, sugerencia: null },
+    aviso: null,
+  };
+
+  before(async () => {
+    fake = http.createServer((req, res) => {
+      let body = '';
+      req.on('data', (c) => (body += c));
+      req.on('end', () => {
+        requests.push({ method: req.method, url: req.url, headers: req.headers, body: body ? JSON.parse(body) : null });
+        res.setHeader('Content-Type', 'application/json');
+        if (req.url.startsWith('/v1/models/')) {
+          return res.end(JSON.stringify({ type: 'model', id: 'claude-opus-5-5', display_name: 'Claude Opus 5.5', created_at: '2026-01-01T00:00:00Z' }));
+        }
+        res.end(
+          JSON.stringify({
+            id: 'msg_test',
+            type: 'message',
+            role: 'assistant',
+            model: 'claude-opus-5-5',
+            content: [{ type: 'text', text: JSON.stringify(answer) }],
+            stop_reason: 'end_turn',
+            stop_sequence: null,
+            usage: { input_tokens: 3000, output_tokens: 2000 },
+          })
+        );
+      });
+    }).listen(0);
+    await new Promise((r) => fake.once('listening', r));
+    srv = await startPhp({ DATA_DIR: tmp, ANTHROPIC_BASE_URL: `http://127.0.0.1:${fake.address().port}` });
+    await admin('POST', '/api/auth/setup', { name: 'Admin', email: 'admin@example.com', password: 'secreto123' });
+  });
+  after(() => {
+    srv.proc.kill();
+    fake.close();
+    fs.rmSync(tmp, { recursive: true, force: true });
+  });
+
+  test('guardar la clave desde el panel la comprueba primero', async () => {
+    const r = await admin('PATCH', '/api/admin/settings', { apiKey: 'sk-ant-api03-PRUEBA_prueba_prueba_12345' });
+    assert.equal(r.status, 200, JSON.stringify(r.data));
+    const check = requests.at(-1);
+    assert.match(check.url, /^\/v1\/models\//);
+    const sentKey = check.headers['x-api-key'] ?? check.headers.authorization?.replace(/^Bearer /, '');
+    assert.equal(sentKey, 'sk-ant-api03-PRUEBA_prueba_prueba_12345');
+    const o = await admin('GET', '/api/admin/overview');
+    assert.equal(o.data.settings.apiKeyMasked, 'sk-ant-…2345');
+    assert.equal(o.data.system.demoMode, false);
+  });
+
+  test('envía la foto con el formato correcto y guarda el resultado', async () => {
+    const r = await admin('POST', '/api/diagnoses', { photo: PNG, new_plant_name: 'Monstera', symptoms: 'Manchas' });
+    assert.equal(r.status, 201, JSON.stringify(r.data) + srv.log());
+
+    const sent = requests.at(-1);
+    assert.equal(sent.url, '/v1/messages');
+    assert.match(sent.headers['anthropic-beta'], /server-side-fallback-2026-07-01/);
+    const b = sent.body;
+    assert.equal(b.model, 'claude-opus-5-5');
+    assert.equal(b.fallbacks, 'default');
+    assert.equal(b.max_tokens, 16000);
+    assert.equal(b.output_config.effort, 'medium');
+    assert.equal(b.output_config.format.type, 'json_schema');
+    const schema = b.output_config.format.schema;
+    assert.equal(schema.additionalProperties, false, 'el esquema conserva additionalProperties');
+    assert.ok(schema.required.includes('puntuacion_salud'));
+    assert.deepEqual(schema.properties.estado_general.enum, ['saludable', 'leve', 'moderado', 'grave']);
+    const [img, txt] = b.messages[0].content;
+    assert.equal(img.type, 'image');
+    assert.equal(img.source.media_type, 'image/png');
+    assert.equal(img.source.data, PNG.split(',')[1]);
+    assert.match(txt.text, /Manchas/);
+
+    // El resultado se normaliza.
+    assert.equal(r.data.demo, 0);
+    assert.equal(r.data.result.puntuacion_salud, 100);
+    assert.equal(r.data.result.planta_identificada.confianza, 'alta');
+    assert.equal(r.data.result.problemas[0].tipo, 'luz');
+
+    const o = await admin('GET', '/api/admin/overview');
+    // 3000 * 4 / 1M + 2000 * 20 / 1M = 0.052
+    assert.equal(o.data.stats.costMonth, 0.052);
+    const users = await admin('GET', '/api/admin/users');
+    assert.equal(users.data[0].cost_month, 0.052);
+  });
+
+  test('el segundo análisis envía el diagnóstico anterior para comparar', async () => {
+    const plants = await admin('GET', '/api/plants');
+    const r = await admin('POST', '/api/diagnoses', { photo: PNG, plant_id: plants.data[0].id });
+    assert.equal(r.status, 201);
+    assert.match(requests.at(-1).body.messages[0].content[1].text, /Diagnóstico anterior/);
+  });
+
+  test('cambiar a Sonnet desde el panel cambia el modelo usado', async () => {
+    await admin('PATCH', '/api/admin/settings', { model: 'claude-sonnet-5-5' });
+    await admin('POST', '/api/diagnoses', { photo: PNG });
+    assert.equal(requests.at(-1).body.model, 'claude-sonnet-5-5');
+  });
+});
+
+test('los archivos PHP no tienen errores de sintaxis', () => {
+  const files = [path.join(appDir, 'api', 'index.php'), ...fs.readdirSync(path.join(appDir, 'api', 'lib')).map((f) => path.join(appDir, 'api', 'lib', f))];
+  for (const f of files) execFileSync('php', ['-l', f], { stdio: 'pipe' });
 });

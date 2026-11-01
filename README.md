@@ -2,121 +2,136 @@
 
 Aplicación web (instalable en el celular) que analiza fotos de plantas con inteligencia artificial y te dice qué les pasa y cómo cuidarlas.
 
+Funciona en cualquier **hosting compartido con PHP**, como Hostinger, sin servidores especiales ni bases de datos que configurar.
+
 ## Qué hace
 
 - **📷 Diagnóstico con IA**: haz una foto y obtén:
   - la especie de la planta,
   - una puntuación de salud del 0 al 100,
   - los problemas detectados (plagas, hongos, riego, luz, nutrientes…) y lo probable que es cada uno,
-  - un tratamiento paso a paso (qué hacer hoy, esta semana y de forma continua),
+  - un tratamiento paso a paso,
   - cuidados recomendados, consejos de prevención y avisos (por ejemplo, si es tóxica para mascotas).
 - **🪴 Mis plantas**: guarda cada planta con su foto, especie, ubicación y notas.
-- **📈 Evolución**: cada nuevo análisis se compara con el anterior. Verás un gráfico de salud, la foto de "antes y ahora" y todas las fotos en orden.
-- **📋 Historial**: todos los análisis guardados.
-- **⏰ Recordatorios**: de riego automáticos según la frecuencia de cada planta, más los que sugiere la IA (revisar el tratamiento, abonar…). Se pueden repetir, posponer o marcar como hechos, y el navegador puede avisarte.
+- **📈 Evolución**: cada nuevo análisis se compara con el anterior. Verás un gráfico de salud y la foto de "antes y ahora".
+- **📋 Historial** de todos los análisis.
+- **⏰ Recordatorios** de riego automáticos, más los que sugiere la IA. Se pueden repetir, posponer o marcar como hechos, y el navegador puede avisarte.
 - **📝 Diario de cuidados**: apunta cuándo regaste, abonaste, podaste o aplicaste un tratamiento.
-- **👑 Administración**: la primera cuenta que se crea es la de administración. Desde el panel puedes:
-  - crear cuentas para tus clientes, activarlas o desactivarlas y cambiar contraseñas,
-  - abrir o cerrar el registro público,
-  - ver estadísticas de uso.
+- **👑 Panel de administración**:
+  - **clave de Anthropic y modelo de IA** (se configuran desde aquí, sin tocar archivos),
+  - **gasto aproximado** del mes, en total y por cliente,
+  - creación de cuentas para clientes, activación o desactivación y cambio de contraseñas,
+  - límite diario de análisis por cliente,
+  - registro público abierto o cerrado.
 - **🔒 Privacidad**: cada usuario solo ve sus propias plantas y fotos.
-- **📱 Instalable** en Android e iPhone como si fuera una app, con modo oscuro automático.
 
-## La clave de Anthropic, explicada
+Solo **analizar una foto** usa la IA y tiene costo, que es de unos centavos de dólar. El historial, los recordatorios y todo lo demás no cuestan nada.
 
-Para que la IA "vea" la foto, la app envía la imagen a Claude, el modelo de inteligencia artificial de Anthropic. Anthropic cobra un poco por cada análisis, y para saber a quién cobrar usa una **clave de API**: una contraseña larga y secreta que identifica tu cuenta.
+## Instalar en Hostinger (paso a paso)
 
-**Cómo conseguirla:**
+### Requisitos
 
-1. Entra en <https://console.anthropic.com> y crea una cuenta. Es distinta de tu cuenta de claude.ai.
-2. En **Billing**, añade una tarjeta y algo de saldo. Con 5 USD alcanza para hacer muchas pruebas.
-3. En **API Keys**, pulsa **Create Key**, ponle un nombre (por ejemplo, "Inspector de plantas") y copia la clave. Empieza por `sk-ant-…`.
-4. Pégala en el archivo `.env` de la app (ver abajo).
+- Cualquier plan de Hostinger con PHP 8.1 o superior, incluidos Single, Premium y Business.
+- El archivo **`inspector-plantas.zip`**. Para generarlo, ver "Generar el zip" más abajo.
 
-**Importante:**
+### 1. Crear el subdominio
 
-- La clave es como una contraseña: **no la compartas ni la subas a GitHub**. El archivo `.env` ya está excluido para que no se suba por error.
-- Cada análisis cuesta solo unos centavos de dólar. En la consola de Anthropic puedes ver el gasto y poner un límite mensual.
-- La app también limita los análisis diarios de cada cliente (`DAILY_DIAGNOSIS_LIMIT`). Las cuentas de administración no tienen ese límite.
+1. En **hPanel**, entra en tu sitio web y luego en **Dominios → Subdominios**.
+2. Escribe el nombre, por ejemplo `plantas`, y pulsa **Crear**.
+3. Hostinger crea una carpeta para el subdominio, normalmente `public_html/plantas`.
 
-**Sin clave**, la app funciona en **modo demostración**: puedes probar todo, pero los diagnósticos son de ejemplo y no analizan tu foto de verdad.
+### 2. Elegir la versión de PHP
 
-## Cómo ponerla en marcha
+1. Ve a **Avanzado → Configuración de PHP**.
+2. Elige **PHP 8.2 o superior** y guarda.
+3. En la pestaña **Extensiones de PHP**, comprueba que estén marcadas **pdo_sqlite**, **curl** y **mbstring**. Normalmente ya lo están.
 
-Necesitas [Node.js](https://nodejs.org) versión 22.13 o superior.
+### 3. Subir la app
 
-```bash
-npm install
-cp .env.example .env      # y escribe tu clave en ANTHROPIC_API_KEY
-npm start
-```
+1. Abre **Archivos → Administrador de archivos**.
+2. Entra en la carpeta del subdominio, por ejemplo `public_html/plantas`.
+3. Pulsa **Subir** y elige `inspector-plantas.zip`.
+4. Haz clic derecho sobre el zip y elige **Extraer**. Extrae los archivos en esa misma carpeta.
+5. Comprueba que `index.html`, `.htaccess` y las carpetas `api`, `icons` y `vendor` quedan **directamente** dentro de la carpeta del subdominio, no en una subcarpeta.
+6. Borra el archivo `.zip`.
 
-Abre <http://localhost:3000>. La primera vez te pedirá crear la cuenta de administración.
+### 4. Activar HTTPS
 
-### Configuración (`.env`)
+En **Seguridad → SSL**, comprueba que el subdominio tiene certificado. Si no lo tiene, instálalo: es gratis. Sin HTTPS, la cámara del celular no funciona.
 
-| Variable | Para qué sirve | Valor por defecto |
-|---|---|---|
-| `ANTHROPIC_API_KEY` | Clave de Anthropic. Si está vacía, se usa el modo demostración | (vacía) |
-| `ANTHROPIC_MODEL` | Modelo de IA | `claude-opus-5-5` |
-| `PORT` | Puerto del servidor | `3000` |
-| `DATA_DIR` | Carpeta de la base de datos y las fotos | `./data` |
-| `DAILY_DIAGNOSIS_LIMIT` | Análisis por cliente y día (`0` = sin límite) | `20` |
-| `COOKIE_SECURE` | Pon `true` si la app se sirve con HTTPS | `false` |
+### 5. Primer uso
 
-## Publicarla en internet
+1. Abre `https://plantas.tudominio.com`.
+2. Crea la **cuenta de administración**.
+3. Ve a **Mi cuenta → Panel de administración → Inteligencia artificial**, pega tu clave de Anthropic y pulsa **Guardar clave**. La app comprueba que funciona antes de guardarla.
 
-Para usarla desde el celular fuera de casa, o para dar acceso a clientes, hay que publicarla en un servidor. Encajan bien servicios como Railway, Render o Fly.io, o cualquier servidor con Node.js:
+¡Listo! Ya puedes analizar plantas.
 
-1. Conecta este repositorio al servicio.
-2. Comando de inicio: `npm start`.
-3. Añade las variables `ANTHROPIC_API_KEY` y `COOKIE_SECURE=true` en su panel.
-4. **Muy importante:** configura un **disco persistente** y apunta `DATA_DIR` a él. Si no, se perderán la base de datos y las fotos cada vez que el servicio se reinicie.
+## La clave de Anthropic
 
-La cámara del celular y la instalación como app solo funcionan con HTTPS, y estos servicios ya lo incluyen.
+La IA que analiza las fotos es Claude, de Anthropic. Para usarla necesitas una **clave de API**: una contraseña que identifica tu cuenta para que Anthropic sepa a quién cobrar.
 
-### Instalar en el celular
+1. Crea una cuenta en <https://console.anthropic.com>. Es distinta de la de claude.ai.
+2. En **Billing**, añade una tarjeta y algo de saldo. Con 5 USD tienes para muchas pruebas.
+3. En **API Keys**, pulsa **Create Key** y copia la clave, que empieza por `sk-ant-…`.
+4. Pégala en el panel de administración de la app.
 
-- **Android (Chrome)**: menú ⋮ → «Instalar aplicación».
-- **iPhone (Safari)**: botón Compartir → «Añadir a pantalla de inicio».
+En la consola de Anthropic puedes poner un **límite de gasto mensual**. Sin clave, la app funciona en **modo demostración**, con diagnósticos de ejemplo.
+
+### Costo aproximado por análisis
+
+| Modelo (se elige en el panel) | Costo aproximado |
+|---|---|
+| Claude Opus 5.5 (máxima precisión) | 6 a 10 centavos de dólar |
+| Claude Sonnet 5.5 (más económico) | 3 a 5 centavos de dólar |
 
 ## Copias de seguridad
 
-Todos los datos están en la carpeta `DATA_DIR`:
+Todos los datos están en la carpeta **`data/`** de la app:
 
 - `inspector.db` es la base de datos,
 - `uploads/` contiene las fotos.
 
-Para hacer una copia de seguridad, copia esa carpeta.
+Para hacer una copia, descarga esa carpeta desde el Administrador de archivos. Desde la web está bloqueada, así que nadie puede verla.
 
-## Estructura del código
+**Para actualizar la app a una versión nueva**, sube y extrae el zip nuevo encima del anterior. La carpeta `data/` no viene en el zip, así que tus datos se mantienen.
+
+**Opcional, más seguro:** puedes guardar los datos fuera de `public_html`.
+
+1. Copia `api/config.example.php` como `api/config.php`.
+2. Indica la carpeta en `data_dir`, por ejemplo `/home/u123456789/inspector-datos`.
+
+## Problemas frecuentes
+
+| Problema | Solución |
+|---|---|
+| "Falta la extensión PHP…" | Actívala en hPanel → Avanzado → Configuración de PHP → Extensiones |
+| "Esta app necesita PHP 8.1…" | Sube la versión de PHP en hPanel |
+| La cámara no se abre | Comprueba que entras con `https://` |
+| El análisis falla por tiempo | Inténtalo de nuevo o cambia a Sonnet 5.5 en el panel, que es más rápido |
+| "Tu cuenta de Anthropic no tiene saldo" | Añade crédito en console.anthropic.com → Billing |
+
+## Para desarrolladores
 
 ```
-server/
-  index.js          servidor web (Express) y rutas
-  ai.js             análisis con Claude: instrucciones, formato de respuesta y modo demostración
-  auth.js           cuentas, contraseñas cifradas y sesiones
-  db.js             base de datos SQLite (incluida en Node.js)
-  reminders.js      lógica de recordatorios y del diario de cuidados
-  routes/           API: auth, plants, diagnoses, reminders, admin
-public/             la app que ve el usuario (HTML, CSS y JavaScript, sin compilación)
-test/               pruebas automáticas (npm test)
+app/                 todo lo que se sube al hosting
+  index.html, app.js, styles.css, sw.js   interfaz (JavaScript sin compilación)
+  .htaccess          rutas y protección de carpetas
+  api/index.php      punto de entrada de la API
+  api/lib/           core (BD SQLite), auth, ai (Claude), reminders, routes
+  composer.json      dependencias PHP (SDK oficial de Anthropic + Guzzle)
+scripts/build.sh     genera dist/inspector-plantas.zip
+test/                pruebas automáticas
 ```
 
-## Pruebas
+Requisitos para desarrollar: PHP 8.1 o superior, Composer, Node.js 20 o superior (solo para las pruebas) y `zip`.
 
 ```bash
-npm test
+composer install -d app      # instalar dependencias PHP
+npm run dev                  # servidor local en http://localhost:8080
+npm test                     # pruebas (usan modo demostración y un Anthropic simulado)
+npm run build                # genera dist/inspector-plantas.zip
 ```
-
-Las pruebas usan el modo demostración, así que no gastan saldo de Anthropic.
-
-## Próximos pasos posibles
-
-- Notificaciones push reales, que lleguen aunque la app esté cerrada (Web Push).
-- Recuperar la contraseña por correo electrónico.
-- Planes de pago o límites distintos para cada cliente.
-- Exportar el historial de una planta en PDF.
 
 ---
 

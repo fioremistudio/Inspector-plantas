@@ -1,0 +1,36 @@
+# Inspector de Plantas: configuración para Hostinger (Apache / LiteSpeed)
+Options -Indexes
+DirectoryIndex index.html
+
+RewriteEngine On
+
+# Carpetas privadas: datos, librerías y código interno.
+RewriteRule ^(data|vendor)(/|$) - [F,L]
+RewriteRule ^api/lib(/|$) - [F,L]
+
+# Todas las peticiones a /api/... las atiende api/index.php
+RewriteCond %{REQUEST_URI} !/api/index\.php$
+RewriteRule ^api(/.*)?$ api/index.php [QSA,L]
+
+# Forzar HTTPS (necesario para usar la cámara y para instalar la app).
+RewriteCond %{HTTPS} off
+RewriteCond %{HTTP:X-Forwarded-Proto} !https
+RewriteCond %{HTTP_HOST} !^(localhost|127\.0\.0\.1)
+RewriteRule ^ https://%{HTTP_HOST}%{REQUEST_URI} [L,R=301]
+
+<FilesMatch "^(composer\.(json|lock)|config\.php|.*\.md)$">
+  Require all denied
+</FilesMatch>
+
+<IfModule mod_headers.c>
+  <FilesMatch "\.(html|js|webmanifest)$">
+    Header set Cache-Control "no-cache"
+  </FilesMatch>
+</IfModule>
+
+# Fotos de hasta 5 MB (y margen para el texto).
+<IfModule mod_php.c>
+  php_value upload_max_filesize 16M
+  php_value post_max_size 16M
+  php_value max_execution_time 300
+</IfModule>

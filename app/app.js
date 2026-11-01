@@ -31,7 +31,7 @@ function html(strings, ...values) {
 }
 
 async function api(path, { method = 'GET', body } = {}) {
-  const res = await fetch(`/api${path}`, {
+  const res = await fetch(`api${path}`, {
     method,
     headers: body !== undefined ? { 'Content-Type': 'application/json' } : {},
     body: body !== undefined ? JSON.stringify(body) : undefined,
@@ -61,7 +61,7 @@ function toast(message, type = 'ok') {
   toastTimer = setTimeout(() => (el.hidden = true), 3500);
 }
 
-const photoUrl = (name) => (name ? `/api/photos/${encodeURIComponent(name)}` : null);
+const photoUrl = (name) => (name ? `api/photos/${encodeURIComponent(name)}` : null);
 
 function parseDate(s) {
   if (!s) return null;
@@ -127,6 +127,8 @@ const PROBLEM_ICON = {
   otro: '❓',
 };
 const WHEN_LABEL = { hoy: 'Hoy', esta_semana: 'Esta semana', continuo: 'De forma continua' };
+
+const money = (n) => `$${Number(n || 0).toFixed(Number(n || 0) < 1 ? 3 : 2)}`;
 
 const statusPill = (status) =>
   status ? html`<span class="pill ${status}">${STATUS_ICON[status]} ${STATUS_LABEL[status]}</span>` : '';
@@ -325,7 +327,7 @@ async function maybeNotify(due) {
   const body =
     due.length === 1 ? due[0].title : `${due.length} cuidados pendientes: ${due.slice(0, 3).map((r) => r.title).join(', ')}…`;
   const reg = await navigator.serviceWorker?.getRegistration();
-  if (reg) reg.showNotification('Tus plantas te necesitan 🌿', { body, icon: '/icons/icon-192.png', tag: 'ip-due' });
+  if (reg) reg.showNotification('Tus plantas te necesitan 🌿', { body, icon: 'icons/icon-192.png', tag: 'ip-due' });
   else new Notification('Tus plantas te necesitan 🌿', { body });
 }
 
@@ -333,7 +335,7 @@ async function maybeNotify(due) {
 
 function authShell(title, subtitle, form, footer = '') {
   render(html`<div class="auth-wrap">
-    <img class="auth-logo" src="/icons/icon.svg" alt="" />
+    <img class="auth-logo" src="icons/icon.svg" alt="" />
     <h1 class="center">${title}</h1>
     <p class="center muted">${subtitle}</p>
     <div class="card">${form}</div>
@@ -1198,39 +1200,102 @@ function viewAccount() {
 async function viewAdmin() {
   const [overview, users] = await Promise.all([api('/admin/overview'), api('/admin/users')]);
   const s = overview.stats;
+  const cfg = overview.settings;
   render(html`
     <p class="small"><a href="#/cuenta">← Mi cuenta</a></p>
     <h1>Administración</h1>
     ${
       overview.system.demoMode
-        ? html`<div class="notice">🧪 <b>Modo demostración.</b> Falta configurar <code>ANTHROPIC_API_KEY</code> en el servidor para que los análisis sean reales.</div>`
-        : html`<div class="notice info">🤖 Análisis con IA activo · modelo <code>${overview.system.model}</code> · límite ${overview.system.dailyLimit || 'sin límite'} análisis/día por usuario</div>`
+        ? html`<div class="notice">🧪 <b>Modo demostración.</b> Añade tu clave de Anthropic aquí abajo para que los análisis sean reales.</div>`
+        : ''
     }
     <div class="stats">
       <div class="stat"><b>${s.users}</b><span>Usuarios</span></div>
       <div class="stat"><b>${s.plants}</b><span>Plantas</span></div>
-      <div class="stat"><b>${s.diagnoses}</b><span>Análisis totales</span></div>
-      <div class="stat"><b>${s.diagnosesToday}</b><span>Análisis (24 h)</span></div>
+      <div class="stat"><b>${s.diagnosesMonth}</b><span>Análisis este mes</span></div>
+      <div class="stat"><b>${money(s.costMonth)}</b><span>Gasto IA este mes (aprox.)</span></div>
     </div>
 
-    <div class="card" style="margin-top:14px"><h2>Registro de clientes</h2>
+    <div class="card" style="margin-top:14px"><h2>🤖 Inteligencia artificial</h2>
+      ${
+        overview.settings.apiKeyLocked
+          ? html`<p class="small">La clave está fijada en el archivo <code>config.php</code> del servidor: <code>${cfg.apiKeyMasked}</code></p>`
+          : html`<form id="key-form">
+            <div class="field"><label for="api-key">Clave de Anthropic</label>
+              ${cfg.apiKeyMasked ? html`<p class="small" style="margin:0 0 6px">Guardada: <code>${cfg.apiKeyMasked}</code> ✅</p>` : ''}
+              <input id="api-key" name="apiKey" type="password" autocomplete="off" placeholder="${cfg.apiKeyMasked ? 'Pega una clave nueva para cambiarla' : 'sk-ant-…'}" />
+              <p class="hint">Consíguela en console.anthropic.com → API Keys. Se comprueba antes de guardarla.</p></div>
+            <p class="error-msg"></p>
+            <div class="btn-row">
+              <button class="btn primary" type="submit">Guardar clave</button>
+              ${cfg.apiKeyMasked ? html`<button class="btn" type="button" id="test-key">Probar conexión</button>
+                <button class="btn danger" type="button" id="remove-key">Quitar clave</button>` : ''}
+            </div>
+          </form>`
+      }
+      <div class="field" style="margin-top:16px"><label for="model">Modelo de IA</label>
+        <select id="model">${overview.models.map((m) => html`<option value="${m.id}" ${m.id === cfg.model ? raw('selected') : ''}>${m.label}</option>`)}</select>
+        <p class="hint">Opus 5.5 ≈ 6–10 centavos por análisis · Sonnet 5.5 ≈ la mitad.</p></div>
+      <div class="field"><label for="daily-limit">Límite de análisis por cliente y día <span class="hint">(0 = sin límite; no aplica a administradores)</span></label>
+        <div class="row"><input id="daily-limit" type="number" min="0" max="1000" value="${cfg.dailyLimit}" style="width:120px" />
+          <button class="btn small" id="save-limit">Guardar</button></div></div>
+      <p class="small muted">Gasto acumulado total: ${money(s.costTotal)}. Es una estimación; el importe exacto lo ves en console.anthropic.com.</p>
+    </div>
+
+    <div class="card"><h2>Registro de clientes</h2>
       <label class="checkbox"><input type="checkbox" id="allow-reg" ${overview.settings.allowRegistration ? raw('checked') : ''} />
         <span><b>Permitir que cualquiera se registre</b><br /><span class="small muted">Si está desactivado, solo tú puedes crear cuentas desde aquí.</span></span></label>
     </div>
 
     <div class="section-title"><h2>Usuarios</h2><button class="btn primary small" id="new-user">➕ Crear usuario</button></div>
     <div class="card table-wrap"><table>
-      <thead><tr><th>Nombre</th><th>Rol</th><th>Plantas</th><th>Análisis</th><th>Último acceso</th><th></th></tr></thead>
+      <thead><tr><th>Nombre</th><th>Rol</th><th>Plantas</th><th>Análisis</th><th>Gasto mes</th><th>Último acceso</th><th></th></tr></thead>
       <tbody>${users.map(
         (u) => html`<tr>
           <td><b>${u.name}</b>${u.id === state.user.id ? ' (tú)' : ''}<div class="small muted">${u.email}</div>${!u.active ? html`<span class="pill grave">Desactivado</span>` : ''}</td>
           <td>${u.role === 'admin' ? '👑 Admin' : 'Cliente'}</td>
-          <td>${u.plants}</td><td>${u.diagnoses}</td>
+          <td>${u.plants}</td><td>${u.diagnoses}</td><td>${money(u.cost_month)}</td>
           <td class="small">${u.last_login_at ? fmtDateTime(u.last_login_at) : 'Nunca'}</td>
           <td><button class="btn small" data-edit-user="${u.id}">Editar</button></td>
         </tr>`
       )}</tbody></table></div>
   `);
+
+  const saveSetting = async (body, message) => {
+    await api('/admin/settings', { method: 'PATCH', body });
+    toast(message);
+  };
+  const keyForm = $('#key-form');
+  if (keyForm) {
+    handleForm(keyForm, async (data) => {
+      if (!data.apiKey.trim()) throw new Error('Pega la clave primero.');
+      await api('/admin/settings', { method: 'PATCH', body: { apiKey: data.apiKey.trim() } });
+      toast('Clave guardada y comprobada ✅');
+      await loadStatus();
+      router();
+    });
+    $('#test-key')?.addEventListener('click', async (e) => {
+      e.target.disabled = true;
+      try {
+        await api('/admin/test-key', { method: 'POST' });
+        toast('La conexión con Anthropic funciona ✅');
+      } catch (err) {
+        toast(err.message, 'error');
+      } finally {
+        e.target.disabled = false;
+      }
+    });
+    $('#remove-key')?.addEventListener('click', async () => {
+      if (!(await confirmDialog('¿Quitar la clave? La app volverá al modo demostración.', 'Quitar'))) return;
+      await saveSetting({ apiKey: '' }, 'Clave eliminada');
+      await loadStatus();
+      router();
+    });
+  }
+  $('#model').addEventListener('change', (e) => saveSetting({ model: e.target.value }, 'Modelo actualizado'));
+  $('#save-limit').addEventListener('click', () =>
+    saveSetting({ dailyLimit: Number($('#daily-limit').value) || 0 }, 'Límite guardado')
+  );
 
   $('#allow-reg').addEventListener('change', async (e) => {
     await api('/admin/settings', { method: 'PATCH', body: { allowRegistration: e.target.checked } });
@@ -1306,7 +1371,7 @@ window.addEventListener('hashchange', router);
 window.addEventListener('unhandledrejection', (e) => toast(e.reason?.message || 'Error inesperado', 'error'));
 
 (async () => {
-  if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').catch(() => {});
+  if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});
   try {
     await loadStatus();
   } catch {

@@ -1,6 +1,6 @@
 // Service worker: permite instalar la app y que la interfaz cargue aunque falle la red.
-const CACHE = 'inspector-plantas-v1';
-const SHELL = ['/', '/index.html', '/styles.css', '/app.js', '/manifest.webmanifest', '/icons/icon.svg'];
+const CACHE = 'inspector-plantas-v2';
+const SHELL = ['./', 'index.html', 'styles.css', 'app.js', 'manifest.webmanifest', 'icons/icon.svg'];
 
 self.addEventListener('install', (event) => {
   event.waitUntil(caches.open(CACHE).then((c) => c.addAll(SHELL)));
@@ -16,7 +16,7 @@ self.addEventListener('activate', (event) => {
 
 self.addEventListener('fetch', (event) => {
   const url = new URL(event.request.url);
-  if (event.request.method !== 'GET' || url.origin !== location.origin || url.pathname.startsWith('/api/')) return;
+  if (event.request.method !== 'GET' || url.origin !== location.origin || url.pathname.includes('/api/')) return;
   // Red primero, caché como respaldo.
   event.respondWith(
     fetch(event.request)
@@ -25,7 +25,7 @@ self.addEventListener('fetch', (event) => {
         caches.open(CACHE).then((c) => c.put(event.request, copy));
         return res;
       })
-      .catch(() => caches.match(event.request).then((r) => r || caches.match('/index.html')))
+      .catch(() => caches.match(event.request).then((r) => r || caches.match('index.html')))
   );
 });
 
@@ -33,7 +33,7 @@ self.addEventListener('notificationclick', (event) => {
   event.notification.close();
   event.waitUntil(
     self.clients.matchAll({ type: 'window' }).then((list) => {
-      const target = '/#/recordatorios';
+      const target = `${self.registration.scope}#/recordatorios`;
       for (const c of list) {
         if ('focus' in c) {
           c.navigate(target);
