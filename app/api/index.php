@@ -41,6 +41,7 @@ require $autoload;
 require __DIR__ . '/lib/core.php';
 require __DIR__ . '/lib/auth.php';
 require __DIR__ . '/lib/ai.php';
+require __DIR__ . '/lib/gemini.php';
 require __DIR__ . '/lib/reminders.php';
 require __DIR__ . '/lib/routes.php';
 

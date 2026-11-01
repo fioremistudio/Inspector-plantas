@@ -320,3 +320,8 @@ dialog .modal-body { padding: 20px; max-height: 80vh; overflow-y: auto; }
   :root:not([data-theme="light"]) .logo-img { background: #FBF5F7; border-radius: 14px; padding: 3px; }
 }
 :root[data-theme="dark"] .logo-img { background: #FBF5F7; border-radius: 14px; padding: 3px; }
+.provider-choice { display: grid; gap: 10px; }
+.provider { display: flex; gap: 12px; align-items: flex-start; font-weight: 400; padding: 12px 14px; border: 1.5px solid var(--border); border-radius: 14px; cursor: pointer; margin: 0; }
+.provider input { width: 20px; height: 20px; margin-top: 2px; accent-color: var(--primary); flex: none; }
+.provider.on { border-color: var(--primary); background: var(--primary-soft); }
+.provider .pill { margin-left: 8px; }

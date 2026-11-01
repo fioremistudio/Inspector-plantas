@@ -69,6 +69,21 @@ En **Seguridad → SSL**, comprueba que el subdominio tiene certificado. Si no l
 
 ¡Listo! Ya puedes analizar plantas.
 
+## Elegir la IA: Gemini (gratis) o Claude (de pago)
+
+En **Panel de administración → Inteligencia artificial** eliges qué IA analiza las fotos. Puedes cambiar cuando quieras.
+
+### Gemini (Google), gratis con límites
+
+1. Entra en <https://aistudio.google.com> con tu cuenta de Google.
+2. Pulsa **Get API key → Create API key** y copia la clave.
+3. Pégala en el panel, en **Clave de Gemini**. La app comprueba la clave y elige automáticamente el mejor modelo Gemini Flash disponible.
+
+Ten en cuenta:
+
+- El nivel gratuito tiene un límite de análisis por minuto y por día. Puedes ver tus límites en Google AI Studio.
+- Google puede usar el contenido enviado en el nivel gratuito para mejorar sus productos.
+
 ## La clave de Anthropic
 
 La IA que analiza las fotos es Claude, de Anthropic. Para usarla necesitas una **clave de API**: una contraseña que identifica tu cuenta para que Anthropic sepa a quién cobrar.

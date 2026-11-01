@@ -21,6 +21,8 @@ function app_config(): array
     $config = [
         'data_dir' => getenv('DATA_DIR') ?: $root . '/data',
         'anthropic_api_key' => getenv('ANTHROPIC_API_KEY') ?: '',
+        'gemini_api_key' => getenv('GEMINI_API_KEY') ?: '',
+        'provider' => getenv('AI_PROVIDER') ?: '',
         'model' => getenv('ANTHROPIC_MODEL') ?: '',
         'daily_limit' => getenv('DAILY_DIAGNOSIS_LIMIT'),
         'session_days' => 30,
@@ -243,13 +245,52 @@ function daily_limit(): int
     return max(0, (int) (get_setting('daily_limit') ?? '20'));
 }
 
+// --- Proveedor de IA: 'gemini' (gratis, con límites) o 'anthropic' (Claude, de pago) ---
+
+const PROVIDERS = ['gemini', 'anthropic'];
+
+function ai_provider(): string
+{
+    $p = app_config()['provider'] ?: (get_setting('ai_provider') ?? '');
+    if (in_array($p, PROVIDERS, true)) {
+        return $p;
+    }
+    // Sin elección explícita: el que tenga clave (Claude primero por compatibilidad).
+    if (api_key() !== '') return 'anthropic';
+    if (gemini_api_key() !== '') return 'gemini';
+    return 'anthropic';
+}
+
+function gemini_api_key(): string
+{
+    return app_config()['gemini_api_key'] ?: (get_setting('gemini_api_key') ?? '');
+}
+
+function gemini_key_locked(): bool
+{
+    return app_config()['gemini_api_key'] !== '';
+}
+
+function gemini_model(): string
+{
+    return get_setting('gemini_model') ?: 'gemini-2.5-flash';
+}
+
+function active_model(): string
+{
+    return ai_provider() === 'gemini' ? gemini_model() : current_model();
+}
+
 function demo_mode(): bool
 {
-    return api_key() === '';
+    return ai_provider() === 'gemini' ? gemini_api_key() === '' : api_key() === '';
 }
 
 function estimate_cost(string $model, int $in, int $out): float
 {
+    if (str_starts_with($model, 'gemini')) {
+        return 0.0; // nivel gratuito de Google
+    }
     $p = MODELS[$model] ?? MODELS['claude-opus-5-5'];
     return round(($in * $p['in'] + $out * $p['out']) / 1_000_000, 6);
 }

@@ -360,3 +360,118 @@ test('los archivos PHP no tienen errores de sintaxis', () => {
   const files = [path.join(appDir, 'api', 'index.php'), ...fs.readdirSync(path.join(appDir, 'api', 'lib')).map((f) => path.join(appDir, 'api', 'lib', f))];
   for (const f of files) execFileSync('php', ['-l', f], { stdio: 'pipe' });
 });
+
+describe('Gemini (gratis) contra un servidor simulado', () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'inspector-test-'));
+  let srv;
+  let fake;
+  let mode = 'ok';
+  const requests = [];
+  const admin = client(() => srv.base);
+  const answer = {
+    es_planta: true,
+    planta_identificada: { nombre_comun: 'Orquídea', nombre_cientifico: 'Phalaenopsis', confianza: 'media' },
+    estado_general: 'saludable',
+    puntuacion_salud: 88,
+    resumen: 'Está sana.',
+    problemas: [],
+    tratamiento: [],
+    prevencion: ['Riego moderado'],
+    cuidados: { riego: 'Semanal', luz: 'Indirecta', humedad: 'Alta', abono: 'Mensual' },
+    riego_cada_dias: 7,
+    recordatorios_sugeridos: [],
+    comparacion_anterior: null,
+    calidad_foto: { adecuada: true, sugerencia: null },
+    aviso: null,
+  };
+
+  before(async () => {
+    fake = http
+      .createServer((req, res) => {
+        let body = '';
+        req.on('data', (c) => (body += c));
+        req.on('end', () => {
+          requests.push({ method: req.method, url: req.url, headers: req.headers, body: body ? JSON.parse(body) : null });
+          res.setHeader('Content-Type', 'application/json');
+          if (req.headers['x-goog-api-key'] === 'MALA_clave_000000000000000000000000') {
+            res.statusCode = 400;
+            return res.end(JSON.stringify({ error: { code: 400, status: 'INVALID_ARGUMENT', details: [{ reason: 'API_KEY_INVALID' }] } }));
+          }
+          if (req.url.startsWith('/v1beta/models?') || req.url === '/v1beta/models') {
+            const m = (name) => ({ name: `models/${name}`, supportedGenerationMethods: ['generateContent'] });
+            return res.end(JSON.stringify({ models: [m('gemini-2.5-flash'), m('gemini-3.1-flash-lite'), m('gemini-3.0-flash'), m('gemini-3.0-pro'), { name: 'models/text-embedding-004', supportedGenerationMethods: ['embedContent'] }] }));
+          }
+          if (mode === 'limit') {
+            res.statusCode = 429;
+            return res.end(JSON.stringify({ error: { code: 429, status: 'RESOURCE_EXHAUSTED' } }));
+          }
+          res.end(
+            JSON.stringify({
+              candidates: [{ content: { parts: [{ text: 'pensando…', thought: true }, { text: JSON.stringify(answer) }] }, finishReason: 'STOP' }],
+              usageMetadata: { promptTokenCount: 1200, candidatesTokenCount: 600 },
+              modelVersion: 'gemini-3.0-flash',
+            })
+          );
+        });
+      })
+      .listen(0);
+    await new Promise((r) => fake.once('listening', r));
+    srv = await startPhp({ DATA_DIR: tmp, GEMINI_BASE_URL: `http://127.0.0.1:${fake.address().port}` });
+    await admin('POST', '/api/auth/setup', { name: 'Admin', email: 'admin@example.com', password: 'secreto123' });
+  });
+  after(() => {
+    srv.proc.kill();
+    fake.close();
+    fs.rmSync(tmp, { recursive: true, force: true });
+  });
+
+  test('una clave inválida se rechaza con un mensaje claro', async () => {
+    const r = await admin('PATCH', '/api/admin/settings', { geminiKey: 'MALA_clave_000000000000000000000000' });
+    assert.equal(r.status, 502);
+    assert.match(r.data.error, /clave de Gemini no es válida/);
+  });
+
+  test('guardar la clave elige el mejor modelo Flash y activa Gemini', async () => {
+    const r = await admin('PATCH', '/api/admin/settings', { geminiKey: 'AIzaPRUEBA_prueba_prueba_prueba_1234', provider: 'gemini' });
+    assert.equal(r.status, 200, JSON.stringify(r.data));
+    const o = await admin('GET', '/api/admin/overview');
+    assert.equal(o.data.settings.provider, 'gemini');
+    assert.equal(o.data.settings.geminiModel, 'gemini-3.0-flash');
+    assert.equal(o.data.system.demoMode, false);
+  });
+
+  test('analiza la foto con Gemini y no suma gasto', async () => {
+    const r = await admin('POST', '/api/diagnoses', { photo: PNG, new_plant_name: 'Orquídea', symptoms: 'Hojas firmes' });
+    assert.equal(r.status, 201, JSON.stringify(r.data) + srv.log());
+    assert.equal(r.data.result.planta_identificada.nombre_comun, 'Orquídea');
+    assert.equal(r.data.result.puntuacion_salud, 88);
+    assert.equal(r.data.demo, 0);
+
+    const sent = requests.at(-1);
+    assert.equal(sent.url, '/v1beta/models/gemini-3.0-flash:generateContent');
+    assert.equal(sent.headers['x-goog-api-key'], 'AIzaPRUEBA_prueba_prueba_prueba_1234');
+    const b = sent.body;
+    assert.equal(b.contents[0].parts[0].inlineData.mimeType, 'image/png');
+    assert.equal(b.contents[0].parts[0].inlineData.data, PNG.split(',')[1]);
+    assert.match(b.contents[0].parts[1].text, /Hojas firmes/);
+    assert.match(b.systemInstruction.parts[0].text, /fitopatólogo/);
+    const schema = b.generationConfig.responseSchema;
+    assert.equal(b.generationConfig.responseMimeType, 'application/json');
+    assert.equal(schema.type, 'OBJECT');
+    assert.equal(schema.additionalProperties, undefined, 'Gemini no admite additionalProperties');
+    assert.deepEqual(schema.properties.estado_general.enum, ['saludable', 'leve', 'moderado', 'grave']);
+    assert.deepEqual(schema.properties.aviso, { nullable: true, type: 'STRING' });
+    assert.equal(schema.properties.problemas.items.type, 'OBJECT');
+
+    const o = await admin('GET', '/api/admin/overview');
+    assert.equal(o.data.stats.costMonth, 0);
+  });
+
+  test('si se acaba el límite gratuito avisa con un mensaje claro', async () => {
+    mode = 'limit';
+    const r = await admin('POST', '/api/diagnoses', { photo: PNG });
+    mode = 'ok';
+    assert.equal(r.status, 503);
+    assert.match(r.data.error, /límite gratuito de Gemini/);
+  });
+});

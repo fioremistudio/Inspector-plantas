@@ -107,6 +107,11 @@ function analyze_plant(string $base64, string $mediaType, ?array $plant, ?string
     $ctx[] = 'Fecha de hoy: ' . today();
 
     @set_time_limit(300);
+    $userText = "Analiza esta planta y dame el diagnóstico.\n\n" . implode("\n", $ctx);
+    if (ai_provider() === 'gemini') {
+        return analyze_with_gemini($base64, $mediaType, $userText);
+    }
+
     $client = new Anthropic\Client(apiKey: api_key());
     $model = current_model();
 
@@ -124,7 +129,7 @@ function analyze_plant(string $base64, string $mediaType, ?array $plant, ?string
             'role' => 'user',
             'content' => [
                 ['type' => 'image', 'source' => ['type' => 'base64', 'mediaType' => $mediaType, 'data' => $base64]],
-                ['type' => 'text', 'text' => "Analiza esta planta y dame el diagnóstico.\n\n" . implode("\n", $ctx)],
+                ['type' => 'text', 'text' => $userText],
             ],
         ]],
     );
@@ -252,7 +257,7 @@ function demo_diagnosis(?array $plant, ?array $previous): array
         'estado_general' => $score >= 80 ? 'leve' : 'moderado',
         'puntuacion_salud' => $score,
         'resumen' => 'MODO DEMOSTRACIÓN: este es un diagnóstico de ejemplo, no un análisis real de tu foto. '
-            . 'Configura la clave de Anthropic en el panel de administración para obtener diagnósticos reales. En el ejemplo, la planta muestra hojas amarillas por exceso de riego.',
+            . 'Añade una clave de IA (Gemini es gratis) en el panel de administración para obtener diagnósticos reales. En el ejemplo, la planta muestra hojas amarillas por exceso de riego.',
         'problemas' => [
             [
                 'nombre' => 'Exceso de riego', 'tipo' => 'riego', 'probabilidad' => 'alta',

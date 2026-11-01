@@ -128,6 +128,18 @@ const PROBLEM_ICON = {
 };
 const WHEN_LABEL = { hoy: 'Hoy', esta_semana: 'Esta semana', continuo: 'De forma continua' };
 
+function keyForm(which, masked, hint, placeholder) {
+  return html`<form data-key-form="${which}">
+    ${masked ? html`<p class="small" style="margin:0 0 6px">Guardada: <code>${masked}</code> ✅</p>` : ''}
+    <div class="row"><input name="key" type="password" autocomplete="off" class="grow" style="width:auto" aria-label="Clave de ${which === 'gemini' ? 'Gemini' : 'Claude'}"
+      placeholder="${masked ? 'Pega una clave nueva para cambiarla' : placeholder}" />
+      <button class="btn primary" type="submit">Guardar</button></div>
+    <p class="hint">${hint}</p>
+    <p class="error-msg"></p>
+    ${masked ? html`<button class="btn small danger" type="button" data-remove-key>Quitar clave</button>` : ''}
+  </form>`;
+}
+
 const money = (n) => `$${Number(n || 0).toFixed(Number(n || 0) < 1 ? 3 : 2)}`;
 
 const statusPill = (status) =>
@@ -1206,7 +1218,7 @@ async function viewAdmin() {
     <h1>Administración</h1>
     ${
       overview.system.demoMode
-        ? html`<div class="notice">🧪 <b>Modo demostración.</b> Añade tu clave de Anthropic aquí abajo para que los análisis sean reales.</div>`
+        ? html`<div class="notice">🧪 <b>Modo demostración.</b> Añade una clave de IA aquí abajo para que los análisis sean reales. Gemini es gratis.</div>`
         : ''
     }
     <div class="stats">
@@ -1217,29 +1229,37 @@ async function viewAdmin() {
     </div>
 
     <div class="card" style="margin-top:14px"><h2>🤖 Inteligencia artificial</h2>
+      <p class="small muted">Elige qué IA analiza las fotos. Puedes cambiar cuando quieras; los diagnósticos se ven igual.</p>
+      <div class="provider-choice" role="radiogroup" aria-label="IA para analizar fotos">
+        <label class="provider ${cfg.provider === 'gemini' ? 'on' : ''}"><input type="radio" name="provider" value="gemini" ${cfg.provider === 'gemini' ? raw('checked') : ''} />
+          <span><b>Gemini (Google)</b><span class="pill saludable">Gratis</span><br /><span class="small muted">Con límite de análisis por minuto y por día.</span></span></label>
+        <label class="provider ${cfg.provider === 'anthropic' ? 'on' : ''}"><input type="radio" name="provider" value="anthropic" ${cfg.provider === 'anthropic' ? raw('checked') : ''} />
+          <span><b>Claude (Anthropic)</b><span class="pill">De pago</span><br /><span class="small muted">Máxima precisión, unos centavos por análisis.</span></span></label>
+      </div>
+
+      <h3 style="margin-top:18px">Clave de Gemini <span class="hint">(gratis)</span></h3>
       ${
-        overview.settings.apiKeyLocked
-          ? html`<p class="small">La clave está fijada en el archivo <code>config.php</code> del servidor: <code>${cfg.apiKeyMasked}</code></p>`
-          : html`<form id="key-form">
-            <div class="field"><label for="api-key">Clave de Anthropic</label>
-              ${cfg.apiKeyMasked ? html`<p class="small" style="margin:0 0 6px">Guardada: <code>${cfg.apiKeyMasked}</code> ✅</p>` : ''}
-              <input id="api-key" name="apiKey" type="password" autocomplete="off" placeholder="${cfg.apiKeyMasked ? 'Pega una clave nueva para cambiarla' : 'sk-ant-…'}" />
-              <p class="hint">Consíguela en console.anthropic.com → API Keys. Se comprueba antes de guardarla.</p></div>
-            <p class="error-msg"></p>
-            <div class="btn-row">
-              <button class="btn primary" type="submit">Guardar clave</button>
-              ${cfg.apiKeyMasked ? html`<button class="btn" type="button" id="test-key">Probar conexión</button>
-                <button class="btn danger" type="button" id="remove-key">Quitar clave</button>` : ''}
-            </div>
-          </form>`
+        cfg.geminiKeyLocked
+          ? html`<p class="small">Fijada en <code>config.php</code>: <code>${cfg.geminiKeyMasked}</code></p>`
+          : keyForm('gemini', cfg.geminiKeyMasked, 'Consíguela gratis en aistudio.google.com → «Get API key» → «Create API key». Se comprueba antes de guardarla.', 'AIza…')
       }
-      <div class="field" style="margin-top:16px"><label for="model">Modelo de IA</label>
+      ${cfg.geminiModel ? html`<p class="small muted">Modelo detectado: <code>${cfg.geminiModel}</code></p>` : ''}
+
+      <h3 style="margin-top:18px">Clave de Claude <span class="hint">(de pago)</span></h3>
+      ${
+        cfg.apiKeyLocked
+          ? html`<p class="small">Fijada en <code>config.php</code>: <code>${cfg.apiKeyMasked}</code></p>`
+          : keyForm('anthropic', cfg.apiKeyMasked, 'Consíguela en console.anthropic.com → API Keys. Se comprueba antes de guardarla.', 'sk-ant-…')
+      }
+      <div class="field" style="margin-top:12px"><label for="model">Modelo de Claude</label>
         <select id="model">${overview.models.map((m) => html`<option value="${m.id}" ${m.id === cfg.model ? raw('selected') : ''}>${m.label}</option>`)}</select>
         <p class="hint">Opus 5.5 ≈ 6–10 centavos por análisis · Sonnet 5.5 ≈ la mitad.</p></div>
-      <div class="field"><label for="daily-limit">Límite de análisis por cliente y día <span class="hint">(0 = sin límite; no aplica a administradores)</span></label>
+
+      <div class="field" style="margin-top:18px"><label for="daily-limit">Límite de análisis por cliente y día <span class="hint">(0 = sin límite; no aplica a administradores)</span></label>
         <div class="row"><input id="daily-limit" type="number" min="0" max="1000" value="${cfg.dailyLimit}" style="width:120px" />
           <button class="btn small" id="save-limit">Guardar</button></div></div>
-      <p class="small muted">Gasto acumulado total: ${money(s.costTotal)}. Es una estimación; el importe exacto lo ves en console.anthropic.com.</p>
+      <p class="small muted">Gasto acumulado total con Claude: ${money(s.costTotal)} (estimación). Los análisis con Gemini gratis no suman gasto.</p>
+      <div class="btn-row"><button class="btn small" type="button" id="test-key">Probar la IA elegida</button></div>
     </div>
 
     <div class="card"><h2>Registro de clientes</h2>
@@ -1265,33 +1285,45 @@ async function viewAdmin() {
     await api('/admin/settings', { method: 'PATCH', body });
     toast(message);
   };
-  const keyForm = $('#key-form');
-  if (keyForm) {
-    handleForm(keyForm, async (data) => {
-      if (!data.apiKey.trim()) throw new Error('Pega la clave primero.');
-      await api('/admin/settings', { method: 'PATCH', body: { apiKey: data.apiKey.trim() } });
+  document.querySelectorAll('[data-key-form]').forEach((form) => {
+    const which = form.dataset.keyForm; // 'gemini' | 'anthropic'
+    const field = which === 'gemini' ? 'geminiKey' : 'apiKey';
+    handleForm(form, async (data) => {
+      const key = (data.key || '').trim();
+      if (!key) throw new Error('Pega la clave primero.');
+      const body = { [field]: key };
+      // Si aún no hay IA con clave, se activa la que se acaba de configurar.
+      if (overview.system.demoMode) body.provider = which;
+      await api('/admin/settings', { method: 'PATCH', body });
       toast('Clave guardada y comprobada ✅');
       await loadStatus();
       router();
     });
-    $('#test-key')?.addEventListener('click', async (e) => {
-      e.target.disabled = true;
-      try {
-        await api('/admin/test-key', { method: 'POST' });
-        toast('La conexión con Anthropic funciona ✅');
-      } catch (err) {
-        toast(err.message, 'error');
-      } finally {
-        e.target.disabled = false;
-      }
-    });
-    $('#remove-key')?.addEventListener('click', async () => {
-      if (!(await confirmDialog('¿Quitar la clave? La app volverá al modo demostración.', 'Quitar'))) return;
-      await saveSetting({ apiKey: '' }, 'Clave eliminada');
+    form.querySelector('[data-remove-key]')?.addEventListener('click', async () => {
+      if (!(await confirmDialog('¿Quitar esta clave?', 'Quitar'))) return;
+      await saveSetting({ [field]: '' }, 'Clave eliminada');
       await loadStatus();
       router();
     });
-  }
+  });
+  document.querySelectorAll('input[name=provider]').forEach((r) =>
+    r.addEventListener('change', async () => {
+      await saveSetting({ provider: r.value }, r.value === 'gemini' ? 'Ahora se usa Gemini (gratis)' : 'Ahora se usa Claude');
+      await loadStatus();
+      router();
+    })
+  );
+  $('#test-key').addEventListener('click', async (e) => {
+    e.target.disabled = true;
+    try {
+      await api('/admin/test-key', { method: 'POST' });
+      toast('La conexión con la IA funciona ✅');
+    } catch (err) {
+      toast(err.message, 'error');
+    } finally {
+      e.target.disabled = false;
+    }
+  });
   $('#model').addEventListener('change', (e) => saveSetting({ model: e.target.value }, 'Modelo actualizado'));
   $('#save-limit').addEventListener('click', () =>
     saveSetting({ dailyLimit: Number($('#daily-limit').value) || 0 }, 'Límite guardado')

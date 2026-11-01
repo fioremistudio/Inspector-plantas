@@ -527,13 +527,17 @@ function admin_overview(): never
         ],
         'settings' => [
             'allowRegistration' => get_setting('allow_registration', 'false') === 'true',
+            'provider' => ai_provider(),
             'apiKeyMasked' => mask_key(api_key()),
             'apiKeyLocked' => api_key_locked(),
             'model' => current_model(),
+            'geminiKeyMasked' => mask_key(gemini_api_key()),
+            'geminiKeyLocked' => gemini_key_locked(),
+            'geminiModel' => gemini_api_key() !== '' ? gemini_model() : null,
             'dailyLimit' => daily_limit(),
         ],
         'models' => array_map(fn ($id, $m) => ['id' => $id, 'label' => $m['label']], array_keys(MODELS), MODELS),
-        'system' => ['demoMode' => demo_mode(), 'model' => current_model(), 'dailyLimit' => daily_limit()],
+        'system' => ['demoMode' => demo_mode(), 'provider' => ai_provider(), 'model' => active_model(), 'dailyLimit' => daily_limit()],
     ]);
 }
 
@@ -623,6 +627,20 @@ function admin_settings(): never
     if (array_key_exists('dailyLimit', $b)) {
         set_setting('daily_limit', (string) max(0, min(1000, (int) $b['dailyLimit'])));
     }
+    if (array_key_exists('provider', $b)) {
+        if (!in_array($b['provider'], PROVIDERS, true)) throw new HttpError(400, 'Proveedor de IA no válido.');
+        set_setting('ai_provider', $b['provider']);
+    }
+    if (array_key_exists('geminiKey', $b)) {
+        $key = trim((string) $b['geminiKey']);
+        if ($key !== '' && !preg_match('/^[A-Za-z0-9_\-]{30,}$/', $key)) {
+            throw new HttpError(400, 'Esa clave de Gemini no parece válida. Cópiala completa desde Google AI Studio.');
+        }
+        if ($key !== '') {
+            set_setting('gemini_model', gemini_pick_model($key));
+        }
+        set_setting('gemini_api_key', $key);
+    }
     if (array_key_exists('apiKey', $b)) {
         $key = trim((string) $b['apiKey']);
         if ($key !== '' && !preg_match('/^sk-ant-[A-Za-z0-9_\-]{20,}$/', $key)) {
@@ -639,7 +657,11 @@ function admin_settings(): never
 function admin_test_key(): never
 {
     require_admin();
-    if (demo_mode()) throw new HttpError(400, 'Todavía no has guardado ninguna clave.');
-    test_api_key(api_key());
+    if (demo_mode()) throw new HttpError(400, 'Todavía no has guardado la clave de la IA elegida.');
+    if (ai_provider() === 'gemini') {
+        set_setting('gemini_model', gemini_pick_model(gemini_api_key()));
+    } else {
+        test_api_key(api_key());
+    }
     json_out(['ok' => true]);
 }
