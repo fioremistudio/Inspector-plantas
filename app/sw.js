@@ -1,5 +1,5 @@
 // Service worker: permite instalar la app y que la interfaz cargue aunque falle la red.
-const CACHE = 'inspector-plantas-v2';
+const CACHE = 'inspector-plantas-v3';
 const SHELL = ['./', 'index.html', 'styles.css', 'app.js', 'manifest.webmanifest', 'icons/icon.svg'];
 
 self.addEventListener('install', (event) => {

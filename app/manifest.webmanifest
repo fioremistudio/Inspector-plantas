@@ -1,13 +1,13 @@
 {
-  "name": "Inspector de Plantas",
-  "short_name": "Plantas",
+  "name": "Inspector de Plantas · Fioremi",
+  "short_name": "Fioremi Plantas",
   "description": "Analiza tus plantas con inteligencia artificial y recibe consejos para cuidarlas.",
   "lang": "es",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",
-  "background_color": "#f6f4ec",
-  "theme_color": "#2f6b3f",
+  "background_color": "#FBF5F7",
+  "theme_color": "#B8325F",
   "icons": [
     { "src": "icons/icon.svg", "sizes": "any", "type": "image/svg+xml" },
     { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png" },
