@@ -46,14 +46,16 @@ Solo **analizar una foto** usa la IA y tiene costo, que es de unos centavos de d
 2. Elige **PHP 8.2 o superior** y guarda.
 3. En la pestaña **Extensiones de PHP**, comprueba que estén marcadas **pdo_sqlite**, **curl** y **mbstring**. Normalmente ya lo están.
 
-### 3. Subir la app
+### 3. Subir la app (con el instalador)
 
-1. Abre **Archivos → Administrador de archivos**.
-2. Entra en la carpeta del subdominio, por ejemplo `public_html/plantas`.
-3. Pulsa **Subir** y elige `inspector-plantas.zip`.
-4. Haz clic derecho sobre el zip y elige **Extraer**. Extrae los archivos en esa misma carpeta.
-5. Comprueba que `index.html`, `.htaccess` y las carpetas `api`, `icons` y `vendor` quedan **directamente** dentro de la carpeta del subdominio, no en una subcarpeta.
-6. Borra el archivo `.zip`.
+1. Abre **Archivos → Administrador de archivos** y entra en la carpeta del subdominio.
+2. Sube **dos archivos, sin descomprimir nada**:
+   - `inspector-plantas.zip`
+   - `instalar.php` (está en `scripts/instalar.php`)
+3. En el navegador, abre `https://tu-subdominio/instalar.php`.
+4. El instalador comprueba PHP, descomprime la app, borra el .zip y la página de muestra de Hostinger, y después se borra a sí mismo.
+
+**No descomprimas el .zip en tu computador.** La Mac oculta el archivo `.htaccess`, y al arrastrar los archivos sueltos no se suben las carpetas.
 
 ### 4. Activar HTTPS
 
