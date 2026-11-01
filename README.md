@@ -129,7 +129,7 @@ test/                pruebas automáticas
 Requisitos para desarrollar: PHP 8.1 o superior, Composer, Node.js 20 o superior (solo para las pruebas) y `zip`.
 
 ```bash
-composer install -d app      # instalar dependencias PHP
+composer install             # instalar dependencias PHP
 npm run dev                  # servidor local en http://localhost:8080
 npm test                     # pruebas (usan modo demostración y un Anthropic simulado)
 npm run build                # genera dist/inspector-plantas.zip

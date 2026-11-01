@@ -1,0 +1,7 @@
+# Cuando el repositorio se instala con Git en el hosting, la web se sirve desde app/.
+# Esto bloquea el acceso a todo lo demás por si la carpeta del repositorio fuera accesible.
+Options -Indexes
+RewriteEngine On
+RewriteRule ^(vendor|test|scripts|dist|data|\.git)(/|$) - [F,L]
+RewriteRule ^(README\.md|package\.json|composer\.(json|lock)|\.gitignore)$ - [F,L]
+RewriteRule ^$ app/ [L]

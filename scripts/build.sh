@@ -10,6 +10,7 @@ rm -rf dist && mkdir -p "$STAGE"
 tar -C app --exclude=./data --exclude=./vendor --exclude=./api/config.php -cf - . | tar -C "$STAGE" -xf -
 
 # Librerías de PHP (solo las necesarias para producción).
+cp composer.json composer.lock "$STAGE/"
 COMPOSER_ALLOW_SUPERUSER=1 composer install -d "$STAGE" --prefer-dist --no-dev --optimize-autoloader --no-interaction --quiet
 rm -f "$STAGE/composer.json" "$STAGE/composer.lock"
 

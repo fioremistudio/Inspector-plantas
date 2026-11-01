@@ -27,7 +27,17 @@ foreach (['pdo_sqlite', 'curl', 'mbstring'] as $ext) {
     }
 }
 
-require dirname(__DIR__) . '/vendor/autoload.php';
+// Librerías: dentro de la app (instalación con zip) o en la carpeta superior (instalación con Git).
+$autoload = is_file(dirname(__DIR__) . '/vendor/autoload.php')
+    ? dirname(__DIR__) . '/vendor/autoload.php'
+    : dirname(__DIR__, 2) . '/vendor/autoload.php';
+if (!is_file($autoload)) {
+    http_response_code(500);
+    header('Content-Type: application/json; charset=utf-8');
+    echo json_encode(['error' => 'Faltan las librerías de PHP (carpeta vendor). Vuelve a instalar la app.']);
+    exit;
+}
+require $autoload;
 require __DIR__ . '/lib/core.php';
 require __DIR__ . '/lib/auth.php';
 require __DIR__ . '/lib/ai.php';

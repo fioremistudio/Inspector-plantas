@@ -1,4 +1,5 @@
 node_modules/
+vendor/
 app/vendor/
 app/data/
 app/api/config.php
