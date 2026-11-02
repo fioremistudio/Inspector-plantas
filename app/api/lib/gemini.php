@@ -26,7 +26,9 @@ function gemini_fail(int $status, array $body): never
     if ($status === 429 || $reason === 'RESOURCE_EXHAUSTED') {
         throw new HttpError(503, 'Se alcanzó el límite gratuito de Gemini. Espera un minuto (o hasta mañana si es el límite diario), o cambia a Claude en el panel de administración.');
     }
-    if ($status === 403 || str_contains($detail, 'API_KEY_INVALID') || $reason === 'PERMISSION_DENIED' || $reason === 'UNAUTHENTICATED') {
+    $message = (string) ($body['error']['message'] ?? '');
+    if ($status === 403 || str_contains($detail, 'API_KEY_INVALID') || str_contains($detail, 'ACCESS_TOKEN_TYPE_UNSUPPORTED')
+        || stripos($message, 'API key not valid') !== false || $reason === 'PERMISSION_DENIED' || $reason === 'UNAUTHENTICATED') {
         throw new HttpError(502, 'La clave de Gemini no es válida o no tiene permisos. Revísala en el panel de administración.');
     }
     error_log('[inspector] Gemini ' . $status . ': ' . substr(json_encode($body), 0, 500));

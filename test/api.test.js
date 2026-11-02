@@ -440,6 +440,14 @@ describe('Gemini (gratis) contra un servidor simulado', () => {
     assert.equal(o.data.system.demoMode, false);
   });
 
+  test('acepta también el formato nuevo de clave de Google (AQ.…)', async () => {
+    const r = await admin('PATCH', '/api/admin/settings', { geminiKey: 'AQ.Ab8RN6KrPrueba_prueba-prueba.1234567890' });
+    assert.equal(r.status, 200, JSON.stringify(r.data));
+    assert.equal(requests.at(-1).headers['x-goog-api-key'], 'AQ.Ab8RN6KrPrueba_prueba-prueba.1234567890');
+    // Volver a la clave usada por las pruebas siguientes.
+    await admin('PATCH', '/api/admin/settings', { geminiKey: 'AIzaPRUEBA_prueba_prueba_prueba_1234' });
+  });
+
   test('analiza la foto con Gemini y no suma gasto', async () => {
     const r = await admin('POST', '/api/diagnoses', { photo: PNG, new_plant_name: 'Orquídea', symptoms: 'Hojas firmes' });
     assert.equal(r.status, 201, JSON.stringify(r.data) + srv.log());

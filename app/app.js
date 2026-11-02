@@ -1241,7 +1241,7 @@ async function viewAdmin() {
       ${
         cfg.geminiKeyLocked
           ? html`<p class="small">Fijada en <code>config.php</code>: <code>${cfg.geminiKeyMasked}</code></p>`
-          : keyForm('gemini', cfg.geminiKeyMasked, 'Consíguela gratis en aistudio.google.com → «Get API key» → «Create API key». Se comprueba antes de guardarla.', 'AIza…')
+          : keyForm('gemini', cfg.geminiKeyMasked, 'Consíguela gratis en aistudio.google.com → «Get API key» → «Create API key». Se comprueba antes de guardarla.', 'AIza… o AQ.…')
       }
       ${cfg.geminiModel ? html`<p class="small muted">Modelo detectado: <code>${cfg.geminiModel}</code></p>` : ''}
 

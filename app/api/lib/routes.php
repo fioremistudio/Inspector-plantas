@@ -633,7 +633,8 @@ function admin_settings(): never
     }
     if (array_key_exists('geminiKey', $b)) {
         $key = trim((string) $b['geminiKey']);
-        if ($key !== '' && !preg_match('/^[A-Za-z0-9_\-]{30,}$/', $key)) {
+        // Google usa claves "AIza…" y también el formato nuevo "AQ.…" (con punto).
+        if ($key !== '' && !preg_match('/^[A-Za-z0-9_.\-]{20,}$/', $key)) {
             throw new HttpError(400, 'Esa clave de Gemini no parece válida. Cópiala completa desde Google AI Studio.');
         }
         if ($key !== '') {
