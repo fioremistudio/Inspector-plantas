@@ -160,6 +160,20 @@ describe('modo demostración', () => {
     const photo = r.data.plant.photo;
     r = await customer('GET', `/api/photos/${photo}`);
     assert.equal(r.status, 200);
+
+    // Enlace firmado: funciona sin cookie (como desde la CDN) y solo con la firma correcta.
+    const st = await customer('GET', '/api/auth/status');
+    const uid = st.data.user.id;
+    const signed = `/api/foto?f=${photo}&u=${uid}&t=${st.data.photoToken}`;
+    let res = await fetch(srv.base + signed);
+    assert.equal(res.status, 200);
+    assert.equal(res.headers.get('content-type'), 'image/png');
+    assert.match(res.headers.get('cache-control'), /private/);
+    res = await fetch(srv.base + `/api/foto?f=${photo}&u=${uid}&t=00000000000000000000000000000000`);
+    assert.equal(res.status, 404, 'firma incorrecta');
+    const other = await stranger('GET', '/api/auth/status');
+    res = await fetch(srv.base + `/api/foto?f=${photo}&u=${other.data.user.id}&t=${other.data.photoToken}`);
+    assert.equal(res.status, 404, 'la firma de otro usuario no abre fotos ajenas');
     r = await stranger('GET', `/api/photos/${photo}`);
     assert.equal(r.status, 404, 'otro usuario no ve la foto');
     r = await stranger('GET', `/api/plants/${plantId}`);

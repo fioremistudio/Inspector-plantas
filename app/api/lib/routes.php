@@ -41,6 +41,7 @@ function routes(): array
         ['GET', '#^/species/(\d+)$#', 'species_get'],
         ['PATCH', '#^/species/(\d+)$#', 'species_update'],
         ['DELETE', '#^/species/(\d+)$#', 'species_delete'],
+        ['GET', '#^/foto$#', 'photo_signed'],
         ['GET', '#^/photos/([a-f0-9]{32}\.(?:jpg|png|webp|gif))$#', 'photo_get'],
         // --- Administración ---
         ['GET', '#^/admin/overview$#', 'admin_overview'],
@@ -62,6 +63,7 @@ function auth_status(): never
         'allowRegistration' => get_setting('allow_registration', 'false') === 'true',
         'demoMode' => demo_mode(),
         'user' => current_user(),
+        'photoToken' => current_user() ? photo_token(current_user()['id']) : null,
         'dailyLimit' => daily_limit(),
     ]);
 }
@@ -506,10 +508,26 @@ function reminders_delete(string $id): never
 
 // ================= Fotos =================
 
-function photo_get(string $name): never
+/** Clave secreta del servidor para firmar los enlaces de las fotos. */
+function photo_secret(): string
 {
-    $u = require_user();
-    $owned = row('SELECT 1 FROM plants WHERE photo = ? AND user_id = ? UNION SELECT 1 FROM diagnoses WHERE photo = ? AND user_id = ?', [$name, $u['id'], $name, $u['id']]);
+    $s = get_setting('photo_secret');
+    if (!$s) {
+        $s = bin2hex(random_bytes(32));
+        set_setting('photo_secret', $s);
+    }
+    return $s;
+}
+
+/** Firma por usuario: permite ver sus fotos sin depender de la cookie (la CDN no la reenvía con las imágenes). */
+function photo_token(int $userId): string
+{
+    return substr(hash_hmac('sha256', 'fotos:' . $userId, photo_secret()), 0, 32);
+}
+
+function send_photo(string $name, int $userId): never
+{
+    $owned = row('SELECT 1 FROM plants WHERE photo = ? AND user_id = ? UNION SELECT 1 FROM diagnoses WHERE photo = ? AND user_id = ?', [$name, $userId, $name, $userId]);
     $file = uploads_dir() . '/' . $name;
     if (!$owned || !is_file($file)) {
         throw new HttpError(404, 'No encontrado.');
@@ -517,9 +535,28 @@ function photo_get(string $name): never
     $types = array_flip(IMAGE_TYPES);
     header('Content-Type: ' . $types[pathinfo($name, PATHINFO_EXTENSION)]);
     header('Content-Length: ' . filesize($file));
-    header('Cache-Control: private, max-age=31536000, immutable');
+    header('Cache-Control: private, max-age=604800');
+    header_remove('Pragma');
     readfile($file);
     exit;
+}
+
+function photo_get(string $name): never
+{
+    $u = require_user();
+    send_photo($name, $u['id']);
+}
+
+// /api/foto?f=<archivo>&u=<usuario>&t=<firma>
+function photo_signed(): never
+{
+    $name = (string) ($_GET['f'] ?? '');
+    $userId = (int) ($_GET['u'] ?? 0);
+    $token = (string) ($_GET['t'] ?? '');
+    if (!valid_photo_name($name) || $userId <= 0 || !hash_equals(photo_token($userId), $token)) {
+        throw new HttpError(404, 'No encontrado.');
+    }
+    send_photo($name, $userId);
 }
 
 // ================= Administración =================

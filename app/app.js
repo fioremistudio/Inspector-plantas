@@ -61,7 +61,11 @@ function toast(message, type = 'ok') {
   toastTimer = setTimeout(() => (el.hidden = true), 3500);
 }
 
-const photoUrl = (name) => (name ? `api/photos/${encodeURIComponent(name)}` : null);
+// Enlace firmado: no depende de la cookie (la CDN de Hostinger no la envía con las imágenes).
+const photoUrl = (name) =>
+  name
+    ? `api/foto?f=${encodeURIComponent(name)}&u=${state.user?.id ?? 0}&t=${encodeURIComponent(state.status?.photoToken || '')}`
+    : null;
 
 function parseDate(s) {
   if (!s) return null;
