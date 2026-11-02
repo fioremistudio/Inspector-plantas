@@ -23,6 +23,9 @@ function gemini_fail(int $status, array $body): never
 {
     $reason = $body['error']['status'] ?? '';
     $detail = json_encode($body['error']['details'] ?? []);
+    if ($status === 503 || $reason === 'UNAVAILABLE') {
+        throw new HttpError(503, 'Los servidores gratuitos de Google están saturados en este momento. Espera unos minutos y vuelve a intentarlo, o cambia a Claude en el panel de administración.');
+    }
     if ($status === 429 || $reason === 'RESOURCE_EXHAUSTED') {
         throw new HttpError(503, 'Se alcanzó el límite gratuito de Gemini. Espera un minuto (o hasta mañana si es el límite diario), o cambia a Claude en el panel de administración.');
     }
@@ -71,7 +74,32 @@ function gemini_pick_model(string $key): string
         throw new HttpError(502, 'Tu cuenta de Google no tiene disponible ningún modelo Gemini Flash para analizar fotos.');
     }
     arsort($candidates);
-    return (string) array_key_first($candidates);
+    $ranked = array_map('strval', array_keys($candidates));
+    set_setting('gemini_models', json_encode(array_slice($ranked, 0, 6)));
+    return $ranked[0];
+}
+
+/** Modelos a probar en orden: el elegido y, de respaldo, los siguientes mejores de la cuenta. */
+function gemini_model_chain(): array
+{
+    $list = json_decode((string) get_setting('gemini_models', ''), true);
+    if (!is_array($list) || !$list) {
+        try {
+            gemini_pick_model(gemini_api_key());
+            $list = json_decode((string) get_setting('gemini_models', '[]'), true) ?: [];
+        } catch (Throwable $e) {
+            $list = [];
+        }
+    }
+    return array_slice(array_values(array_unique([gemini_model(), ...$list])), 0, 4);
+}
+
+/** Errores pasajeros (saturación, límite de un modelo concreto, fallo del servidor). */
+function gemini_is_transient(int $status, array $body): bool
+{
+    $reason = $body['error']['status'] ?? '';
+    return in_array($status, [429, 500, 502, 503, 504], true)
+        || in_array($reason, ['UNAVAILABLE', 'RESOURCE_EXHAUSTED', 'INTERNAL', 'DEADLINE_EXCEEDED'], true);
 }
 
 /** Convierte el esquema JSON de la app al formato de esquema que acepta Gemini. */
@@ -124,13 +152,22 @@ function gemini_generate(string $model, string $base64, string $mediaType, strin
 
 function analyze_with_gemini(string $base64, string $mediaType, string $userText): array
 {
-    $model = gemini_model();
-    [$status, $body] = gemini_generate($model, $base64, $mediaType, $userText, true);
-    if ($status === 400 && ($body['error']['status'] ?? '') === 'INVALID_ARGUMENT'
-        && stripos((string) ($body['error']['message'] ?? ''), 'API key') === false) {
-        // Google rechazó la petición (probablemente el esquema): se reintenta sin él.
-        log_error('Gemini 400 con esquema, reintentando sin esquema: ' . substr(json_encode($body, JSON_UNESCAPED_UNICODE), 0, 1500));
-        [$status, $body] = gemini_generate($model, $base64, $mediaType, $userText, false);
+    $chain = gemini_model_chain();
+    $model = $chain[0];
+    foreach ($chain as $i => $model) {
+        [$status, $body] = gemini_generate($model, $base64, $mediaType, $userText, true);
+        if ($status === 400 && ($body['error']['status'] ?? '') === 'INVALID_ARGUMENT'
+            && stripos((string) ($body['error']['message'] ?? ''), 'API key') === false) {
+            // Google rechazó la petición (probablemente el esquema): se reintenta sin él.
+            log_error("Gemini 400 con esquema ($model), reintentando sin esquema: " . substr(json_encode($body, JSON_UNESCAPED_UNICODE), 0, 1500));
+            [$status, $body] = gemini_generate($model, $base64, $mediaType, $userText, false);
+        }
+        if ($status === 200 || !gemini_is_transient($status, $body) || $i === count($chain) - 1) {
+            break;
+        }
+        // Modelo saturado o sin cupo: se prueba el siguiente de la lista.
+        log_error("Gemini $status ($model), probando otro modelo: " . substr(json_encode($body, JSON_UNESCAPED_UNICODE), 0, 300));
+        usleep((int) (getenv('GEMINI_RETRY_PAUSE_MS') ?: 1500) * 1000);
     }
     if ($status !== 200) {
         gemini_fail($status, $body);

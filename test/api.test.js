@@ -481,6 +481,10 @@ describe('Gemini (gratis) contra un servidor simulado', () => {
             const m = (name) => ({ name: `models/${name}`, supportedGenerationMethods: ['generateContent'] });
             return res.end(JSON.stringify({ models: [m('gemini-2.5-flash'), m('gemini-3.1-flash-lite'), m('gemini-3.0-flash'), m('gemini-3.0-pro'), { name: 'models/text-embedding-004', supportedGenerationMethods: ['embedContent'] }] }));
           }
+          if (mode === 'busy' || (mode === 'busy-first' && req.url.includes('gemini-3.0-flash:'))) {
+            res.statusCode = 503;
+            return res.end(JSON.stringify({ error: { code: 503, status: 'UNAVAILABLE', message: 'This model is currently experiencing high demand.' } }));
+          }
           if (mode === 'limit') {
             res.statusCode = 429;
             return res.end(JSON.stringify({ error: { code: 429, status: 'RESOURCE_EXHAUSTED' } }));
@@ -507,7 +511,7 @@ describe('Gemini (gratis) contra un servidor simulado', () => {
       })
       .listen(0);
     await new Promise((r) => fake.once('listening', r));
-    srv = await startPhp({ DATA_DIR: tmp, GEMINI_BASE_URL: `http://127.0.0.1:${fake.address().port}` });
+    srv = await startPhp({ DATA_DIR: tmp, GEMINI_BASE_URL: `http://127.0.0.1:${fake.address().port}`, GEMINI_RETRY_PAUSE_MS: '10' });
     await admin('POST', '/api/auth/setup', { name: 'Admin', email: 'admin@example.com', password: 'secreto123' });
   });
   after(() => {
@@ -582,6 +586,25 @@ describe('Gemini (gratis) contra un servidor simulado', () => {
     assert.match(calls[1].body.contents[0].parts[1].text, /Responde ÚNICAMENTE con un objeto JSON/);
     // Sin nombre: la planta se guarda con el nombre que detectó la IA.
     assert.equal(r.data.plant_name, 'Orquídea');
+  });
+
+  test('si el modelo está saturado, prueba con el siguiente modelo', async () => {
+    mode = 'busy-first';
+    const before = requests.length;
+    const r = await admin('POST', '/api/diagnoses', { photo: PNG });
+    mode = 'ok';
+    assert.equal(r.status, 201, JSON.stringify(r.data));
+    const calls = requests.slice(before).filter((x) => x.url.includes(':generateContent'));
+    assert.equal(calls[0].url, '/v1beta/models/gemini-3.0-flash:generateContent');
+    assert.equal(calls[1].url, '/v1beta/models/gemini-2.5-flash:generateContent');
+  });
+
+  test('si todos los modelos están saturados, avisa en español', async () => {
+    mode = 'busy';
+    const r = await admin('POST', '/api/diagnoses', { photo: PNG });
+    mode = 'ok';
+    assert.equal(r.status, 503);
+    assert.match(r.data.error, /saturados/);
   });
 
   test('si se acaba el límite gratuito avisa con un mensaje claro', async () => {
