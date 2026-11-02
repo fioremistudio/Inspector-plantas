@@ -21,6 +21,7 @@ Cómo trabajar:
 - Si la planta está sana, dilo con claridad y da consejos de mantenimiento; no inventes problemas.
 - Si la foto no es de una planta, marca es_planta = false y explica en el resumen qué foto se necesita.
 - Si la foto es borrosa, oscura o no muestra la zona afectada, indícalo en calidad_foto y sugiere cómo tomar una mejor.
+- Identifica la planta lo mejor posible: nombre común más usado en español (en nombre_comun), nombre científico, familia botánica y otros nombres populares con los que se conoce en países hispanohablantes (máximo 4). Si es un bonsái, indica la especie del árbol.
 - puntuacion_salud va de 0 (muerta) a 100 (perfecta).
 - Sugiere recordatorios útiles (riego, revisión del tratamiento, abono). Para un tratamiento, sugiere una revisión en 5-10 días para seguir la evolución. en_dias es dentro de cuántos días desde hoy.
 - Si se te da el diagnóstico anterior de la misma planta, compara y explica si ha mejorado, empeorado o sigue igual en comparacion_anterior; si no, déjalo en null.
@@ -47,6 +48,8 @@ function diagnosis_schema(): array
         'planta_identificada' => $obj([
             'nombre_comun' => $str,
             'nombre_cientifico' => $nullStr,
+            'familia' => $nullStr,
+            'otros_nombres' => $arr($str),
             'confianza' => $enum('confianza'),
         ]),
         'estado_general' => $enum('estado_general'),
@@ -183,6 +186,8 @@ function normalize_result(array $r): array
         'planta_identificada' => [
             'nombre_comun' => $s($pi['nombre_comun'] ?? '') ?: 'Planta',
             'nombre_cientifico' => $ns($pi['nombre_cientifico'] ?? null),
+            'familia' => $ns($pi['familia'] ?? null),
+            'otros_nombres' => array_slice(array_values(array_filter(array_map($s, $list($pi['otros_nombres'] ?? null)))), 0, 4),
             'confianza' => pick_enum('confianza', $pi['confianza'] ?? '', 'media'),
         ],
         'estado_general' => pick_enum('estado_general', $r['estado_general'] ?? '', 'moderado'),
@@ -252,6 +257,8 @@ function demo_diagnosis(?array $plant, ?array $previous): array
         'planta_identificada' => [
             'nombre_comun' => $plant['species'] ?? $plant['name'] ?? 'Potus (ejemplo)',
             'nombre_cientifico' => 'Epipremnum aureum',
+            'familia' => 'Araceae',
+            'otros_nombres' => ['Pothos', 'Teléfono', 'Hiedra del diablo'],
             'confianza' => 'media',
         ],
         'estado_general' => $score >= 80 ? 'leve' : 'moderado',

@@ -31,8 +31,9 @@ function gemini_fail(int $status, array $body): never
         || stripos($message, 'API key not valid') !== false || $reason === 'PERMISSION_DENIED' || $reason === 'UNAUTHENTICATED') {
         throw new HttpError(502, 'La clave de Gemini no es válida o no tiene permisos. Revísala en el panel de administración.');
     }
-    error_log('[inspector] Gemini ' . $status . ': ' . substr(json_encode($body), 0, 500));
-    throw new HttpError(502, 'El servicio de IA de Google devolvió un error. Inténtalo de nuevo.');
+    log_error('Gemini ' . $status . ' (' . gemini_model() . '): ' . substr(json_encode($body, JSON_UNESCAPED_UNICODE), 0, 2000));
+    $hint = $message !== '' ? ' Detalle: ' . mb_substr($message, 0, 180) : '';
+    throw new HttpError(502, 'El servicio de IA de Google devolvió un error. Inténtalo de nuevo.' . $hint);
 }
 
 /**
@@ -94,9 +95,16 @@ function gemini_schema(array $s): array
     return $out;
 }
 
-function analyze_with_gemini(string $base64, string $mediaType, string $userText): array
+function gemini_generate(string $model, string $base64, string $mediaType, string $userText, bool $withSchema): array
 {
-    $model = gemini_model();
+    $config = ['responseMimeType' => 'application/json', 'maxOutputTokens' => 16000];
+    if ($withSchema) {
+        $config['responseSchema'] = gemini_schema(diagnosis_schema());
+    } else {
+        // Plan B: el formato se describe en el texto en lugar de imponerlo.
+        $userText .= "\n\nResponde ÚNICAMENTE con un objeto JSON válido que siga exactamente este esquema JSON (mismos nombres de campos):\n"
+            . json_encode(diagnosis_schema(), JSON_UNESCAPED_UNICODE);
+    }
     $res = gemini_http()->post('/v1beta/models/' . rawurlencode($model) . ':generateContent', [
         'headers' => ['x-goog-api-key' => gemini_api_key()],
         'json' => [
@@ -108,16 +116,24 @@ function analyze_with_gemini(string $base64, string $mediaType, string $userText
                     ['text' => $userText],
                 ],
             ]],
-            'generationConfig' => [
-                'responseMimeType' => 'application/json',
-                'responseSchema' => gemini_schema(diagnosis_schema()),
-                'maxOutputTokens' => 16000,
-            ],
+            'generationConfig' => $config,
         ],
     ]);
-    $body = json_decode((string) $res->getBody(), true) ?: [];
-    if ($res->getStatusCode() !== 200) {
-        gemini_fail($res->getStatusCode(), $body);
+    return [$res->getStatusCode(), json_decode((string) $res->getBody(), true) ?: []];
+}
+
+function analyze_with_gemini(string $base64, string $mediaType, string $userText): array
+{
+    $model = gemini_model();
+    [$status, $body] = gemini_generate($model, $base64, $mediaType, $userText, true);
+    if ($status === 400 && ($body['error']['status'] ?? '') === 'INVALID_ARGUMENT'
+        && stripos((string) ($body['error']['message'] ?? ''), 'API key') === false) {
+        // Google rechazó la petición (probablemente el esquema): se reintenta sin él.
+        log_error('Gemini 400 con esquema, reintentando sin esquema: ' . substr(json_encode($body, JSON_UNESCAPED_UNICODE), 0, 1500));
+        [$status, $body] = gemini_generate($model, $base64, $mediaType, $userText, false);
+    }
+    if ($status !== 200) {
+        gemini_fail($status, $body);
     }
     if (!empty($body['promptFeedback']['blockReason'])) {
         throw new HttpError(422, 'La IA no pudo analizar esta imagen. Prueba con otra foto.');
@@ -133,8 +149,13 @@ function analyze_with_gemini(string $base64, string $mediaType, string $userText
             $text .= $part['text'];
         }
     }
+    $text = trim($text);
+    if (preg_match('/^```(?:json)?\s*(.*?)\s*```$/s', $text, $m)) {
+        $text = $m[1];
+    }
     $data = json_decode($text, true);
     if ($finish === 'MAX_TOKENS' || !is_array($data)) {
+        log_error('Gemini respuesta no válida (' . $finish . '): ' . mb_substr($text, 0, 1500));
         throw new HttpError(502, 'La respuesta de la IA llegó incompleta. Inténtalo de nuevo.');
     }
     $usage = $body['usageMetadata'] ?? [];

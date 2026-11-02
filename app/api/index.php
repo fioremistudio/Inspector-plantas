@@ -86,12 +86,12 @@ try {
 } catch (APIConnectionException) {
     json_out(['error' => 'No se pudo conectar con el servicio de IA. Inténtalo de nuevo.'], 503);
 } catch (APIException $e) {
-    error_log('[inspector] Anthropic: ' . $e->getMessage());
+    log_error('Anthropic: ' . mb_substr($e->getMessage(), 0, 1500));
     $msg = str_contains($e->getMessage(), 'credit balance')
         ? 'Tu cuenta de Anthropic no tiene saldo. Añade crédito en console.anthropic.com → Billing.'
         : 'El servicio de IA devolvió un error. Inténtalo de nuevo.';
     json_out(['error' => $msg], 502);
 } catch (Throwable $e) {
-    error_log('[inspector] ' . $e);
+    log_error((string) $e);
     json_out(['error' => 'Ha ocurrido un error inesperado.'], 500);
 }

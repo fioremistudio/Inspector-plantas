@@ -617,8 +617,8 @@ async function viewAnalyze(params) {
         <p class="hint">Si la guardas, tendrás su historial, recordatorios y podrás ver cómo evoluciona.</p>
       </div>
       <div class="field" id="new-name-field" hidden>
-        <label for="new_plant_name">Nombre para tu planta</label>
-        <input type="text" id="new_plant_name" name="new_plant_name" maxlength="80" placeholder="Ej.: Potus del salón" />
+        <label for="new_plant_name">Nombre para tu planta <span class="hint">(opcional)</span></label>
+        <input type="text" id="new_plant_name" name="new_plant_name" maxlength="80" placeholder="Si lo dejas vacío, usaremos el nombre que detecte la IA" />
       </div>
       <div class="field">
         <label for="symptoms">¿Qué le notas? <span class="hint">(opcional, ayuda a acertar)</span></label>
@@ -632,7 +632,6 @@ async function viewAnalyze(params) {
   const sel = $('#plant_id');
   const syncNew = () => {
     $('#new-name-field').hidden = sel.value !== 'new';
-    $('#new_plant_name').required = sel.value === 'new';
   };
   sel.addEventListener('change', syncNew);
 
@@ -662,7 +661,10 @@ async function viewAnalyze(params) {
   handleForm($('#f'), async (data, form) => {
     if (!photoData) throw new Error('Primero añade una foto.');
     const body = { photo: photoData, symptoms: data.symptoms };
-    if (data.plant_id === 'new') body.new_plant_name = data.new_plant_name;
+    if (data.plant_id === 'new') {
+      body.new_plant = true;
+      body.new_plant_name = data.new_plant_name;
+    }
     else if (data.plant_id) body.plant_id = Number(data.plant_id);
 
     form.hidden = true;
@@ -720,13 +722,20 @@ async function viewDiagnosis(id) {
     ${d.demo ? html`<div class="notice">🧪 <b>Diagnóstico de ejemplo.</b> La app está en modo demostración y no ha analizado tu foto de verdad.</div>` : ''}
     <div class="diag-photo"><img src="${photoUrl(d.photo)}" alt="Foto analizada" /></div>
 
+    <div class="card id-card">
+      <div class="small id-kicker">🌿 Esta planta es</div>
+      <h1 class="id-name">${r.planta_identificada.nombre_comun}</h1>
+      ${r.planta_identificada.nombre_cientifico ? html`<div class="id-sci"><i>${r.planta_identificada.nombre_cientifico}</i>${r.planta_identificada.familia ? html` · familia ${r.planta_identificada.familia}` : ''}</div>` : ''}
+      ${r.planta_identificada.otros_nombres?.length ? html`<div class="small" style="margin-top:8px">También se conoce como: <b>${r.planta_identificada.otros_nombres.join(', ')}</b></div>` : ''}
+      <div class="small muted" style="margin-top:8px">Certeza de la identificación: ${r.planta_identificada.confianza}</div>
+    </div>
+
     <div class="card">
       <div class="diag-head">
         ${gauge(r.puntuacion_salud)}
         <div>
-          <h1 style="margin-bottom:4px">${r.planta_identificada.nombre_comun}</h1>
-          ${r.planta_identificada.nombre_cientifico ? html`<div class="muted small"><i>${r.planta_identificada.nombre_cientifico}</i> · confianza ${r.planta_identificada.confianza}</div>` : ''}
-          <div style="margin-top:8px">${statusPill(r.estado_general)}</div>
+          <div class="small muted">Salud de tu planta</div>
+          <div style="margin:4px 0 6px">${statusPill(r.estado_general)}</div>
           ${d.plant_name ? html`<div class="small" style="margin-top:6px">🪴 <a href="#/planta/${d.plant_id}">${d.plant_name}</a></div>` : ''}
           <div class="small muted">${fmtDateTime(d.created_at)}</div>
         </div>

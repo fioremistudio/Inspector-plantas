@@ -405,6 +405,17 @@ describe('Gemini (gratis) contra un servidor simulado', () => {
             res.statusCode = 429;
             return res.end(JSON.stringify({ error: { code: 429, status: 'RESOURCE_EXHAUSTED' } }));
           }
+          const parsed = body ? JSON.parse(body) : {};
+          if (mode === 'schema400' && parsed.generationConfig?.responseSchema) {
+            res.statusCode = 400;
+            return res.end(JSON.stringify({ error: { code: 400, status: 'INVALID_ARGUMENT', message: 'Invalid JSON payload received. Unknown name "propertyOrdering"' } }));
+          }
+          if (mode === 'schema400') {
+            return res.end(JSON.stringify({
+              candidates: [{ content: { parts: [{ text: '```json\n' + JSON.stringify(answer) + '\n```' }] }, finishReason: 'STOP' }],
+              usageMetadata: { promptTokenCount: 1000, candidatesTokenCount: 500 },
+            }));
+          }
           res.end(
             JSON.stringify({
               candidates: [{ content: { parts: [{ text: 'pensando…', thought: true }, { text: JSON.stringify(answer) }] }, finishReason: 'STOP' }],
@@ -453,6 +464,8 @@ describe('Gemini (gratis) contra un servidor simulado', () => {
     assert.equal(r.status, 201, JSON.stringify(r.data) + srv.log());
     assert.equal(r.data.result.planta_identificada.nombre_comun, 'Orquídea');
     assert.equal(r.data.result.puntuacion_salud, 88);
+    assert.deepEqual(r.data.result.planta_identificada.otros_nombres, []);
+    assert.equal(r.data.result.planta_identificada.familia, null);
     assert.equal(r.data.demo, 0);
 
     const sent = requests.at(-1);
@@ -469,10 +482,26 @@ describe('Gemini (gratis) contra un servidor simulado', () => {
     assert.equal(schema.additionalProperties, undefined, 'Gemini no admite additionalProperties');
     assert.deepEqual(schema.properties.estado_general.enum, ['saludable', 'leve', 'moderado', 'grave']);
     assert.deepEqual(schema.properties.aviso, { nullable: true, type: 'STRING' });
+    assert.ok(schema.properties.planta_identificada.properties.otros_nombres);
     assert.equal(schema.properties.problemas.items.type, 'OBJECT');
 
     const o = await admin('GET', '/api/admin/overview');
     assert.equal(o.data.stats.costMonth, 0);
+  });
+
+  test('si Google rechaza el formato, reintenta sin esquema y funciona', async () => {
+    mode = 'schema400';
+    const before = requests.length;
+    const r = await admin('POST', '/api/diagnoses', { photo: PNG, new_plant: true, new_plant_name: '' });
+    mode = 'ok';
+    assert.equal(r.status, 201, JSON.stringify(r.data));
+    const calls = requests.slice(before).filter((x) => x.url.includes(':generateContent'));
+    assert.equal(calls.length, 2, 'primero con esquema, luego sin él');
+    assert.ok(calls[0].body.generationConfig.responseSchema);
+    assert.equal(calls[1].body.generationConfig.responseSchema, undefined);
+    assert.match(calls[1].body.contents[0].parts[1].text, /Responde ÚNICAMENTE con un objeto JSON/);
+    // Sin nombre: la planta se guarda con el nombre que detectó la IA.
+    assert.equal(r.data.plant_name, 'Orquídea');
   });
 
   test('si se acaba el límite gratuito avisa con un mensaje claro', async () => {

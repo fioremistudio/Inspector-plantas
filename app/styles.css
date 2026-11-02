@@ -325,3 +325,7 @@ dialog .modal-body { padding: 20px; max-height: 80vh; overflow-y: auto; }
 .provider input { width: 20px; height: 20px; margin-top: 2px; accent-color: var(--primary); flex: none; }
 .provider.on { border-color: var(--primary); background: var(--primary-soft); }
 .provider .pill { margin-left: 8px; }
+.id-card { background: var(--primary-soft); border-color: transparent; }
+.id-kicker { font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--primary); }
+.id-name { font-size: 1.9rem; margin: 6px 0 4px; }
+.id-sci { color: var(--muted); }

@@ -296,6 +296,9 @@ function diagnoses_create(): never
 
     $id = transaction(function () use ($u, $b, &$plant, $file, $symptoms, $a, $result) {
         $newName = clean_text($b['new_plant_name'] ?? null, 80);
+        if (!$newName && !empty($b['new_plant'])) {
+            $newName = mb_substr($result['planta_identificada']['nombre_comun'], 0, 80);
+        }
         if (!$plant && $newName && $result['es_planta']) {
             q('INSERT INTO plants (user_id, name, species, photo, water_every_days) VALUES (?, ?, ?, ?, ?)', [
                 $u['id'], $newName, $result['planta_identificada']['nombre_comun'], $file, $result['riego_cada_dias'],

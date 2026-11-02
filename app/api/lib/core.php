@@ -54,6 +54,16 @@ function data_dir(): string
     return $dir;
 }
 
+/** Registro privado de errores (data/errors.log, no accesible desde la web). */
+function log_error(string $msg): void
+{
+    $file = data_dir() . '/errors.log';
+    if (is_file($file) && filesize($file) > 300_000) {
+        @rename($file, $file . '.old');
+    }
+    @file_put_contents($file, '[' . gmdate('Y-m-d H:i:s') . ' UTC] ' . $msg . "\n", FILE_APPEND | LOCK_EX);
+}
+
 function uploads_dir(): string
 {
     return data_dir() . '/uploads';
