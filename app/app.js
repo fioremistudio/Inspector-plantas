@@ -261,6 +261,8 @@ const routes = [
   [/^\/planta\/(\d+)$/, viewPlant],
   [/^\/recordatorios$/, viewReminders],
   [/^\/historial$/, viewHistory],
+  [/^\/enciclopedia$/, viewEncyclopedia],
+  [/^\/especie\/(\d+)$/, viewSpecies],
   [/^\/cuenta$/, viewAccount],
   [/^\/admin$/, viewAdmin, { admin: true }],
 ];
@@ -293,7 +295,7 @@ async function router() {
   if (loggedIn) {
     $('#topbar-user').textContent = state.user.name.trim().charAt(0).toUpperCase();
     const section = path.split('/')[1] || 'inicio';
-    const navMap = { planta: 'plantas', diagnostico: 'historial', cuenta: '', admin: '' };
+    const navMap = { planta: 'plantas', diagnostico: 'historial', cuenta: '', admin: '', enciclopedia: 'plantas', especie: 'plantas' };
     const active = navMap[section] ?? section;
     document.querySelectorAll('#nav a').forEach((a) => a.classList.toggle('active', a.dataset.nav === active));
   }
@@ -507,6 +509,11 @@ async function viewHome() {
     <a href="#/analizar" class="card row" style="text-decoration:none;color:inherit;background:var(--primary-soft);border-color:transparent">
       <div style="font-size:2.4rem">📷</div>
       <div class="grow"><b>Analizar una planta</b><div class="small muted">Haz una foto y descubre qué le pasa y cómo cuidarla.</div></div>
+      <div style="font-size:1.4rem">›</div>
+    </a>
+    <a href="#/enciclopedia" class="card row" style="text-decoration:none;color:inherit">
+      <div style="font-size:2rem">📖</div>
+      <div class="grow"><b>Enciclopedia de plantas</b><div class="small muted">Fichas con los cuidados de cada especie.</div></div>
       <div style="font-size:1.4rem">›</div>
     </a>
 
@@ -728,6 +735,7 @@ async function viewDiagnosis(id) {
       ${r.planta_identificada.nombre_cientifico ? html`<div class="id-sci"><i>${r.planta_identificada.nombre_cientifico}</i>${r.planta_identificada.familia ? html` · familia ${r.planta_identificada.familia}` : ''}</div>` : ''}
       ${r.planta_identificada.otros_nombres?.length ? html`<div class="small" style="margin-top:8px">También se conoce como: <b>${r.planta_identificada.otros_nombres.join(', ')}</b></div>` : ''}
       <div class="small muted" style="margin-top:8px">Certeza de la identificación: ${r.planta_identificada.confianza}</div>
+      ${d.species ? html`<a class="btn small" style="margin-top:12px" href="#/especie/${d.species.id}">📖 Ver ficha completa de ${d.species.nombre_comun}</a>` : ''}
     </div>
 
     <div class="card">
@@ -787,14 +795,22 @@ async function viewDiagnosis(id) {
         : ''
     }
 
-    <div class="card"><h2>Cuidados recomendados</h2>
-      <div class="care-grid">
-        <div><b>💧 Riego</b>${r.cuidados.riego}</div>
-        <div><b>☀️ Luz</b>${r.cuidados.luz}</div>
-        <div><b>💨 Humedad</b>${r.cuidados.humedad}</div>
-        <div><b>🌱 Abono</b>${r.cuidados.abono}</div>
-      </div>
-    </div>
+    ${
+      d.species
+        ? html`<div class="card"><h2>Cuidados de ${d.species.nombre_comun}</h2>
+          <p class="small muted" style="margin-top:-4px">De la ficha del directorio${d.species.verificada ? ' · ✅ verificada' : ''}.</p>
+          ${careGrid(d.species)}
+          ${r.cuidados.riego && r.cuidados.riego !== '—' ? html`<p class="small" style="margin-top:12px"><b>Para tu planta ahora:</b> ${r.cuidados.riego}</p>` : ''}
+        </div>`
+        : html`<div class="card"><h2>Cuidados recomendados</h2>
+          <div class="care-grid">
+            <div><b>💧 Riego</b>${r.cuidados.riego}</div>
+            <div><b>☀️ Luz</b>${r.cuidados.luz}</div>
+            <div><b>💨 Humedad</b>${r.cuidados.humedad}</div>
+            <div><b>🌱 Abono</b>${r.cuidados.abono}</div>
+          </div>
+        </div>`
+    }
 
     ${r.prevencion.length ? html`<div class="card"><h2>Para que no vuelva a pasar</h2><ul>${r.prevencion.map((p) => html`<li>${p}</li>`)}</ul></div>` : ''}
 
@@ -903,7 +919,7 @@ async function viewPlants(params) {
   render(html`
     <div class="row between"><h1 style="margin:0">${archived ? 'Plantas archivadas' : 'Mis plantas'}</h1>
       <button class="btn primary small" id="add">➕ Añadir</button></div>
-    <p class="muted small">${archived ? html`<a href="#/plantas">← Volver a mis plantas</a>` : html`<a href="#/plantas?archivadas=1">Ver archivadas</a>`}</p>
+    <p class="muted small">${archived ? html`<a href="#/plantas">← Volver a mis plantas</a>` : html`<a href="#/plantas?archivadas=1">Ver archivadas</a> · <a href="#/enciclopedia">📖 Enciclopedia de plantas</a>`}</p>
     ${
       plants.length
         ? html`<div class="plant-grid">${plants.map(plantCard)}</div>`
@@ -942,7 +958,7 @@ function healthChart(diagnoses) {
 }
 
 async function viewPlant(id, params) {
-  const { plant: p, diagnoses, care, reminders } = await api(`/plants/${id}`);
+  const { plant: p, species, diagnoses, care, reminders } = await api(`/plants/${id}`);
   const tab = params.get('tab') || 'evolucion';
   const first = diagnoses[diagnoses.length - 1];
   const last = diagnoses[0];
@@ -1028,7 +1044,7 @@ async function viewPlant(id, params) {
     <div class="plant-hero">${thumb(p.photo)}</div>
     <div class="row between">
       <div class="grow"><h1 style="margin-bottom:2px">${p.name}</h1>
-        <div class="muted">${p.species || 'Especie sin indicar'}${p.location ? ` · ${p.location}` : ''}</div></div>
+        <div class="muted">${species ? html`<a href="#/especie/${species.id}">📖 ${species.nombre_comun}</a>` : p.species || 'Especie sin indicar'}${p.location ? ` · ${p.location}` : ''}</div></div>
       ${p.last_health !== null ? html`<div class="center"><b style="font-size:1.6rem;color:${healthColor(p.last_health)}">${p.last_health}</b><div class="small muted">salud</div></div>` : ''}
     </div>
     <div class="row small muted" style="margin:8px 0 14px">
@@ -1168,6 +1184,166 @@ async function viewReminders() {
   });
 }
 
+// ---------- Vistas: enciclopedia y fichas ----------
+
+const DIFFICULTY_LABEL = { facil: 'Fácil', media: 'Media', dificil: 'Difícil' };
+
+function careGrid(sp) {
+  const items = [
+    ['💧 Riego', sp.riego],
+    ['☀️ Luz', sp.luz],
+    ['💨 Humedad', sp.humedad],
+    ['🌡️ Temperatura', sp.temperatura],
+    ['🌱 Abono', sp.abono],
+    ['🪨 Sustrato', sp.sustrato],
+  ].filter(([, v]) => v);
+  return html`<div class="care-grid">${items.map(([k, v]) => html`<div><b>${k}</b>${v}</div>`)}</div>`;
+}
+
+const searchKey = (s) =>
+  String(s || '')
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '');
+
+async function viewEncyclopedia() {
+  const list = await api('/species');
+  const isAdmin = state.user.role === 'admin';
+  const pending = list.filter((x) => !x.verificada).length;
+  render(html`
+    <p class="small"><a href="#/plantas">← Mis plantas</a></p>
+    <div class="row between"><h1 style="margin:0">Enciclopedia</h1>
+      ${isAdmin ? html`<button class="btn primary small" id="new-species">➕ Nueva ficha</button>` : ''}</div>
+    <p class="muted">${list.length} plantas en el directorio. Cuando la IA reconoce una especie nueva, se añade sola.</p>
+    ${isAdmin && pending ? html`<div class="notice">✍️ Hay ${pending} fichas sin revisar. Ábrelas para corregirlas y marcarlas como verificadas.</div>` : ''}
+    <div class="field"><input type="text" id="sp-search" placeholder="Buscar por nombre, nombre científico o familia…" aria-label="Buscar planta" /></div>
+    <div class="card"><ul class="list" id="sp-list">${list.map(
+      (x) => html`<li data-search="${searchKey([x.nombre_comun, x.nombre_cientifico, x.familia, ...(x.otros_nombres || [])].join(' '))}">
+        <a class="item-link" href="#/especie/${x.id}">
+          <div class="avatar">${x.imagen_url ? html`<img src="${x.imagen_url}" alt="" loading="lazy" referrerpolicy="no-referrer" />` : '🌿'}</div>
+          <div class="grow">
+            <div><b>${x.nombre_comun}</b> ${x.verificada ? html`<span title="Ficha verificada">✅</span>` : ''}</div>
+            <div class="small muted ellipsis"><i>${x.nombre_cientifico || ''}</i>${x.familia ? ` · ${x.familia}` : ''}</div>
+          </div>
+          ${x.toxica_mascotas ? html`<span class="pill moderado" title="Tóxica para mascotas">🐾 Tóxica</span>` : ''}
+        </a></li>`
+    )}</ul>
+    <p class="empty" id="sp-empty" hidden>No hay plantas con ese nombre.</p></div>
+  `);
+  $('#sp-search').addEventListener('input', (e) => {
+    const q = searchKey(e.target.value.trim());
+    let shown = 0;
+    document.querySelectorAll('#sp-list li').forEach((li) => {
+      const ok = !q || li.dataset.search.includes(q);
+      li.hidden = !ok;
+      shown += ok ? 1 : 0;
+    });
+    $('#sp-empty').hidden = shown > 0;
+  });
+  $('#new-species')?.addEventListener('click', () => openSpeciesForm(null, (sp) => (location.hash = `#/especie/${sp.id}`)));
+}
+
+async function viewSpecies(id) {
+  const sp = await api(`/species/${id}`);
+  const isAdmin = state.user.role === 'admin';
+  render(html`
+    <p class="small"><a href="#/enciclopedia">← Enciclopedia</a></p>
+    ${sp.imagen_url ? html`<div class="plant-hero"><img src="${sp.imagen_url}" alt="${sp.nombre_comun}" referrerpolicy="no-referrer" /></div>` : ''}
+    <div class="card id-card">
+      <div class="small id-kicker">📖 Ficha de planta ${sp.verificada ? '· ✅ verificada' : ''}</div>
+      <h1 class="id-name">${sp.nombre_comun}</h1>
+      ${sp.nombre_cientifico ? html`<div class="id-sci"><i>${sp.nombre_cientifico}</i>${sp.familia ? html` · familia ${sp.familia}` : ''}</div>` : ''}
+      ${sp.otros_nombres.length ? html`<div class="small" style="margin-top:8px">También se conoce como: <b>${sp.otros_nombres.join(', ')}</b></div>` : ''}
+      <div class="row small" style="margin-top:10px">
+        ${sp.dificultad ? html`<span class="pill">Dificultad: ${DIFFICULTY_LABEL[sp.dificultad]}</span>` : ''}
+        ${sp.origen ? html`<span class="pill">🌍 ${sp.origen}</span>` : ''}
+      </div>
+    </div>
+    ${sp.descripcion ? html`<div class="card"><p style="margin:0">${sp.descripcion}</p>
+      ${sp.wikipedia_url ? html`<p class="small muted" style="margin:8px 0 0">Fuente: <a href="${sp.wikipedia_url}" target="_blank" rel="noopener">Wikipedia</a></p>` : ''}</div>` : ''}
+    ${
+      sp.toxica_mascotas !== null || sp.toxicidad
+        ? html`<div class="notice ${sp.toxica_mascotas ? 'bad' : 'info'}">${sp.toxica_mascotas ? '⚠️' : '🐾'} ${sp.toxicidad || (sp.toxica_mascotas ? 'Tóxica para mascotas.' : 'No tóxica para mascotas.')}</div>`
+        : ''
+    }
+    <div class="card"><h2>Cuidados</h2>${careGrid(sp)}
+      ${sp.riego_cada_dias ? html`<p class="small muted" style="margin:10px 0 0">Frecuencia de riego orientativa: cada ${sp.riego_cada_dias} días (depende del clima y la maceta).</p>` : ''}</div>
+    ${sp.problemas_comunes.length ? html`<div class="card"><h2>Problemas frecuentes</h2><ul>${sp.problemas_comunes.map((x) => html`<li>${x}</li>`)}</ul></div>` : ''}
+    <p class="small muted">${sp.fuente}${sp.veces_vista ? ` · Reconocida ${sp.veces_vista} ${sp.veces_vista === 1 ? 'vez' : 'veces'} en análisis` : ''}${sp.gbif_key ? html` · <a href="https://www.gbif.org/species/${sp.gbif_key}" target="_blank" rel="noopener">GBIF</a>` : ''}</p>
+    ${
+      isAdmin
+        ? html`<div class="btn-row" style="margin:14px 0">
+          <button class="btn primary" id="edit-sp">✏️ Editar ficha</button>
+          ${sp.verificada ? '' : html`<button class="btn" id="verify-sp">✅ Marcar como verificada</button>`}
+          <button class="btn danger" id="del-sp">Eliminar</button></div>`
+        : ''
+    }
+  `);
+  if (!isAdmin) return;
+  $('#edit-sp').addEventListener('click', () => openSpeciesForm(sp, () => router()));
+  $('#verify-sp')?.addEventListener('click', async () => {
+    await api(`/species/${sp.id}`, { method: 'PATCH', body: { verificada: true } });
+    toast('Ficha verificada ✅');
+    router();
+  });
+  $('#del-sp').addEventListener('click', async () => {
+    if (!(await confirmDialog(`¿Eliminar la ficha de ${sp.nombre_comun}? Los análisis no se borran.`, 'Eliminar'))) return;
+    await api(`/species/${sp.id}`, { method: 'DELETE' });
+    toast('Ficha eliminada');
+    location.hash = '#/enciclopedia';
+  });
+}
+
+function openSpeciesForm(sp, onSaved) {
+  const v = sp || { otros_nombres: [], problemas_comunes: [] };
+  const text = (name, label, value, area = false) =>
+    html`<div class="field"><label for="sf-${name}">${label}</label>${
+      area
+        ? html`<textarea id="sf-${name}" name="${name}" maxlength="2000">${value || ''}</textarea>`
+        : html`<input id="sf-${name}" name="${name}" type="text" maxlength="600" value="${value || ''}" />`
+    }</div>`;
+  const dlg = showModal(html`<h2>${sp ? 'Editar ficha' : 'Nueva ficha'}</h2>
+    <form id="sf">
+      ${text('nombre_comun', 'Nombre común', v.nombre_comun)}
+      ${text('nombre_cientifico', 'Nombre científico', v.nombre_cientifico)}
+      ${text('familia', 'Familia', v.familia)}
+      ${text('otros_nombres', 'Otros nombres (separados por comas)', v.otros_nombres.join(', '))}
+      ${text('origen', 'Origen', v.origen)}
+      <div class="field"><label for="sf-dificultad">Dificultad</label><select id="sf-dificultad" name="dificultad">
+        <option value="">Sin indicar</option>
+        ${Object.entries(DIFFICULTY_LABEL).map(([k, l]) => html`<option value="${k}" ${v.dificultad === k ? raw('selected') : ''}>${l}</option>`)}
+      </select></div>
+      ${text('descripcion', 'Descripción', v.descripcion, true)}
+      ${text('riego', 'Riego', v.riego, true)}
+      <div class="field"><label for="sf-rd">Regar cada… días (orientativo)</label><input id="sf-rd" name="riego_cada_dias" type="number" min="1" max="60" value="${v.riego_cada_dias || ''}" /></div>
+      ${text('luz', 'Luz', v.luz, true)}
+      ${text('humedad', 'Humedad', v.humedad)}
+      ${text('temperatura', 'Temperatura', v.temperatura)}
+      ${text('abono', 'Abono', v.abono, true)}
+      ${text('sustrato', 'Sustrato', v.sustrato)}
+      <div class="field"><label for="sf-tox">¿Tóxica para mascotas?</label><select id="sf-tox" name="toxica_mascotas">
+        <option value="" ${v.toxica_mascotas === null || v.toxica_mascotas === undefined ? raw('selected') : ''}>No se sabe</option>
+        <option value="1" ${v.toxica_mascotas === true ? raw('selected') : ''}>Sí</option>
+        <option value="0" ${v.toxica_mascotas === false ? raw('selected') : ''}>No</option>
+      </select></div>
+      ${text('toxicidad', 'Detalle de toxicidad', v.toxicidad, true)}
+      ${text('problemas_comunes', 'Problemas frecuentes (uno por línea)', v.problemas_comunes.join('\n'), true)}
+      <label class="checkbox"><input type="checkbox" name="verificada" ${v.verificada || !sp ? raw('checked') : ''} /><span>Ficha revisada y verificada</span></label>
+      <p class="error-msg"></p>
+      <div class="btn-row" style="justify-content:flex-end"><button type="button" class="btn" data-close>Cancelar</button>
+        <button class="btn primary" type="submit">Guardar</button></div>
+    </form>`);
+  handleForm($('#sf', dlg), async (data) => {
+    data.verificada = data.verificada === 'on';
+    const saved = sp
+      ? await api(`/species/${sp.id}`, { method: 'PATCH', body: data })
+      : await api('/species', { method: 'POST', body: data });
+    dlg.close();
+    toast('Ficha guardada');
+    onSaved(saved);
+  });
+}
+
 // ---------- Vista: historial ----------
 
 async function viewHistory() {
@@ -1233,6 +1409,7 @@ async function viewAdmin() {
     <div class="stats">
       <div class="stat"><b>${s.users}</b><span>Usuarios</span></div>
       <div class="stat"><b>${s.plants}</b><span>Plantas</span></div>
+      <a class="stat" href="#/enciclopedia" style="text-decoration:none;color:inherit"><b>${s.species}</b><span>Fichas${s.speciesPending ? ` · ${s.speciesPending} sin revisar` : ''}</span></a>
       <div class="stat"><b>${s.diagnosesMonth}</b><span>Análisis este mes</span></div>
       <div class="stat"><b>${money(s.costMonth)}</b><span>Gasto IA este mes (aprox.)</span></div>
     </div>

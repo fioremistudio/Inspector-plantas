@@ -166,6 +166,7 @@ function migrate(PDO $pdo): void
     CREATE INDEX IF NOT EXISTS idx_reminders_user ON reminders(user_id, done_at, due_date);
     CREATE INDEX IF NOT EXISTS idx_care_plant     ON care_log(plant_id, created_at);
     SQL);
+    species_migrate($pdo);
 }
 
 // --- Consultas cortas ---

@@ -43,6 +43,7 @@ require __DIR__ . '/lib/auth.php';
 require __DIR__ . '/lib/ai.php';
 require __DIR__ . '/lib/gemini.php';
 require __DIR__ . '/lib/reminders.php';
+require __DIR__ . '/lib/species.php';
 require __DIR__ . '/lib/routes.php';
 
 use Anthropic\Core\Exceptions\APIConnectionException;

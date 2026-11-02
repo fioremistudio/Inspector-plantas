@@ -69,7 +69,7 @@ describe('modo demostración', () => {
   const stranger = client(getBase);
 
   before(async () => {
-    srv = await startPhp({ DATA_DIR: tmp, ANTHROPIC_API_KEY: '', DAILY_DIAGNOSIS_LIMIT: '3' });
+    srv = await startPhp({ DATA_DIR: tmp, ANTHROPIC_API_KEY: '', DAILY_DIAGNOSIS_LIMIT: '3', WIKIPEDIA_BASE_URL: 'http://127.0.0.1:9', GBIF_BASE_URL: 'http://127.0.0.1:9' });
   });
   after(() => {
     srv.proc.kill();
@@ -166,8 +166,49 @@ describe('modo demostración', () => {
     assert.equal(r.status, 404, 'otro usuario no ve la planta');
   });
 
+  test('directorio: 50 fichas iniciales y enlace con el análisis', async () => {
+    let r = await customer('GET', '/api/species');
+    assert.equal(r.status, 200);
+    assert.equal(r.data.length, 50);
+    const potus = r.data.find((x) => x.nombre_cientifico === 'Epipremnum aureum');
+    assert.ok(potus);
+
+    // El análisis de demostración identifica un potus: se enlaza con su ficha.
+    const plants = await customer('GET', '/api/plants');
+    const plant = await customer('GET', `/api/plants/${plants.data[0].id}`);
+    assert.equal(plant.data.species.id, potus.id);
+    const d = await customer('GET', `/api/diagnoses/${plant.data.diagnoses[0].id}`);
+    assert.equal(d.data.species.nombre_comun, 'Potus');
+    assert.ok(d.data.species.riego);
+
+    // Sin Wikipedia/GBIF disponibles, la ficha se abre igual.
+    r = await customer('GET', `/api/species/${potus.id}`);
+    assert.equal(r.status, 200);
+    assert.equal(r.data.enriquecida, 1);
+    assert.equal(r.data.toxica_mascotas, true);
+    assert.ok(r.data.veces_vista >= 1);
+  });
+
+  test('directorio: solo la administración edita fichas', async () => {
+    const { data: list } = await admin('GET', '/api/species');
+    const monstera = list.find((x) => x.nombre_cientifico === 'Monstera deliciosa');
+    let r = await customer('PATCH', `/api/species/${monstera.id}`, { riego: 'Nada' });
+    assert.equal(r.status, 403);
+    r = await admin('PATCH', `/api/species/${monstera.id}`, { riego: 'Cada semana, sin encharcar.', otros_nombres: 'Costilla de Adán, Monstruo verde', verificada: true });
+    assert.equal(r.status, 200);
+    assert.equal(r.data.riego, 'Cada semana, sin encharcar.');
+    assert.deepEqual(r.data.otros_nombres, ['Costilla de Adán', 'Monstruo verde']);
+    assert.equal(r.data.verificada, true);
+    r = await admin('POST', '/api/species', { nombre_comun: 'Planta de prueba', nombre_cientifico: 'Testus plantus' });
+    assert.equal(r.status, 201);
+    r = await admin('DELETE', `/api/species/${r.data.id}`);
+    assert.equal(r.status, 200);
+    r = await admin('POST', '/api/species', { nombre_comun: '' });
+    assert.equal(r.status, 400);
+  });
+
   test('las carpetas privadas no son accesibles desde la web', async () => {
-    for (const url of ['/data/inspector.db', '/vendor/autoload.php', '/api/lib/core.php']) {
+    for (const url of ['/data/inspector.db', '/vendor/autoload.php', '/api/lib/core.php', '/api/lib/species-seed.json', '/data/errors.log']) {
       const r = await fetch(srv.base + url);
       assert.notEqual(r.status, 200, url);
     }
@@ -267,6 +308,12 @@ describe('análisis real contra un Anthropic simulado', () => {
       req.on('end', () => {
         requests.push({ method: req.method, url: req.url, headers: req.headers, body: body ? JSON.parse(body) : null });
         res.setHeader('Content-Type', 'application/json');
+        if (req.url.startsWith('/api/rest_v1/page/summary/')) {
+          return res.end(JSON.stringify({ type: 'standard', title: 'Monstera deliciosa', extract: 'Especie de planta trepadora de la familia Araceae.', thumbnail: { source: 'https://upload.wikimedia.org/monstera.jpg' }, content_urls: { desktop: { page: 'https://es.wikipedia.org/wiki/Monstera_deliciosa' } } }));
+        }
+        if (req.url.startsWith('/v1/species/match')) {
+          return res.end(JSON.stringify({ matchType: 'EXACT', usageKey: 2868241, canonicalName: 'Rarus plantus', family: 'Rarusaceae' }));
+        }
         if (req.url.startsWith('/v1/models/')) {
           return res.end(JSON.stringify({ type: 'model', id: 'claude-opus-5-5', display_name: 'Claude Opus 5.5', created_at: '2026-01-01T00:00:00Z' }));
         }
@@ -285,7 +332,8 @@ describe('análisis real contra un Anthropic simulado', () => {
       });
     }).listen(0);
     await new Promise((r) => fake.once('listening', r));
-    srv = await startPhp({ DATA_DIR: tmp, ANTHROPIC_BASE_URL: `http://127.0.0.1:${fake.address().port}` });
+    const fakeUrl = `http://127.0.0.1:${fake.address().port}`;
+    srv = await startPhp({ DATA_DIR: tmp, ANTHROPIC_BASE_URL: fakeUrl, WIKIPEDIA_BASE_URL: fakeUrl, GBIF_BASE_URL: fakeUrl });
     await admin('POST', '/api/auth/setup', { name: 'Admin', email: 'admin@example.com', password: 'secreto123' });
   });
   after(() => {
@@ -347,6 +395,38 @@ describe('análisis real contra un Anthropic simulado', () => {
     const r = await admin('POST', '/api/diagnoses', { photo: PNG, plant_id: plants.data[0].id });
     assert.equal(r.status, 201);
     assert.match(requests.at(-1).body.messages[0].content[1].text, /Diagnóstico anterior/);
+  });
+
+  test('enlaza la Monstera con su ficha y crea fichas nuevas para especies desconocidas', async () => {
+    const list = await admin('GET', '/api/diagnoses');
+    const first = await admin('GET', `/api/diagnoses/${list.data.at(-1).id}`);
+    assert.equal(first.data.species.nombre_cientifico, 'Monstera deliciosa');
+
+    const original = answer.planta_identificada;
+    answer.planta_identificada = { nombre_comun: 'Planta rara', nombre_cientifico: 'Rarus plantus', familia: null, otros_nombres: ['Rareza'], confianza: 'alta' };
+    const before = (await admin('GET', '/api/species')).data.length;
+    let r = await admin('POST', '/api/diagnoses', { photo: PNG });
+    answer.planta_identificada = original;
+    assert.equal(r.status, 201);
+    const sp = r.data.species;
+    assert.equal(sp.nombre_cientifico, 'Rarus plantus');
+    assert.equal(sp.verificada, false);
+    assert.match(sp.fuente, /IA/);
+    assert.equal((await admin('GET', '/api/species')).data.length, before + 1);
+
+    // Al abrir la ficha se completa con Wikipedia y GBIF.
+    r = await admin('GET', `/api/species/${sp.id}`);
+    assert.equal(r.data.descripcion, 'Especie de planta trepadora de la familia Araceae.');
+    assert.equal(r.data.imagen_url, 'https://upload.wikimedia.org/monstera.jpg');
+    assert.equal(r.data.familia, 'Rarusaceae');
+    assert.equal(r.data.gbif_key, 2868241);
+    assert.ok(requests.some((x) => x.url.startsWith('/api/rest_v1/page/summary/') && x.headers['user-agent'].startsWith('FioremiInspector')));
+
+    // La segunda vez se reutiliza la misma ficha.
+    answer.planta_identificada = { nombre_comun: 'Rareza', nombre_cientifico: 'Rarus plantus var. minor', confianza: 'media' };
+    r = await admin('POST', '/api/diagnoses', { photo: PNG });
+    answer.planta_identificada = original;
+    assert.equal(r.data.species.id, sp.id);
   });
 
   test('cambiar a Sonnet desde el panel cambia el modelo usado', async () => {

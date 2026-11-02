@@ -35,6 +35,12 @@ function routes(): array
         ['POST', '#^/reminders/(\d+)/snooze$#', 'reminders_snooze'],
         ['DELETE', '#^/reminders/(\d+)$#', 'reminders_delete'],
         // --- Fotos ---
+        // --- Directorio de plantas ---
+        ['GET', '#^/species$#', 'species_list'],
+        ['POST', '#^/species$#', 'species_create'],
+        ['GET', '#^/species/(\d+)$#', 'species_get'],
+        ['PATCH', '#^/species/(\d+)$#', 'species_update'],
+        ['DELETE', '#^/species/(\d+)$#', 'species_delete'],
         ['GET', '#^/photos/([a-f0-9]{32}\.(?:jpg|png|webp|gif))$#', 'photo_get'],
         // --- Administración ---
         ['GET', '#^/admin/overview$#', 'admin_overview'],
@@ -182,6 +188,7 @@ function plants_get(string $id): never
     }, rows('SELECT id, photo, symptoms, health_score, status, demo, created_at, result_json FROM diagnoses WHERE plant_id = ? ORDER BY created_at DESC, id DESC', [$plant['id']]));
     json_out([
         'plant' => $plant,
+        'species' => $plant['species_id'] ? species_row((int) $plant['species_id']) : null,
         'diagnoses' => $diagnoses,
         'care' => rows('SELECT * FROM care_log WHERE plant_id = ? ORDER BY created_at DESC, id DESC LIMIT 100', [$plant['id']]),
         'reminders' => rows('SELECT * FROM reminders WHERE plant_id = ? AND done_at IS NULL ORDER BY due_date', [$plant['id']]),
@@ -253,6 +260,7 @@ function get_diagnosis(int $userId, mixed $id): array
         throw new HttpError(404, 'No se encontró el diagnóstico.');
     }
     $r['result'] = json_decode($r['result_json'], true);
+    $r['species'] = $r['species_id'] ? species_row((int) $r['species_id']) : null;
     unset($r['result_json'], $r['input_tokens'], $r['output_tokens'], $r['cost_usd']);
     return $r;
 }
@@ -295,29 +303,33 @@ function diagnoses_create(): never
     $result = $a['result'];
 
     $id = transaction(function () use ($u, $b, &$plant, $file, $symptoms, $a, $result) {
+        $speciesId = species_link_result($result);
         $newName = clean_text($b['new_plant_name'] ?? null, 80);
         if (!$newName && !empty($b['new_plant'])) {
             $newName = mb_substr($result['planta_identificada']['nombre_comun'], 0, 80);
         }
         if (!$plant && $newName && $result['es_planta']) {
-            q('INSERT INTO plants (user_id, name, species, photo, water_every_days) VALUES (?, ?, ?, ?, ?)', [
-                $u['id'], $newName, $result['planta_identificada']['nombre_comun'], $file, $result['riego_cada_dias'],
+            q('INSERT INTO plants (user_id, name, species, photo, water_every_days, species_id) VALUES (?, ?, ?, ?, ?, ?)', [
+                $u['id'], $newName, $result['planta_identificada']['nombre_comun'], $file,
+                $result['riego_cada_dias'] ?? ($speciesId ? scalar('SELECT riego_cada_dias FROM species WHERE id = ?', [$speciesId]) : null),
+                $speciesId,
             ]);
             $plant = owned_plant($u['id'], insert_id());
             sync_watering_reminder($u['id'], $plant);
         }
-        q('INSERT INTO diagnoses (user_id, plant_id, photo, symptoms, result_json, health_score, status, model, demo, input_tokens, output_tokens, cost_usd)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)', [
+        q('INSERT INTO diagnoses (user_id, plant_id, photo, symptoms, result_json, health_score, status, model, demo, input_tokens, output_tokens, cost_usd, species_id)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)', [
             $u['id'], $plant['id'] ?? null, $file, $symptoms,
             json_encode($result, JSON_UNESCAPED_UNICODE),
             $result['es_planta'] ? $result['puntuacion_salud'] : null,
             $result['es_planta'] ? $result['estado_general'] : null,
             $a['model'], $a['demo'] ? 1 : 0, $a['input_tokens'], $a['output_tokens'],
             $a['demo'] ? 0 : estimate_cost($a['model'], $a['input_tokens'], $a['output_tokens']),
+            $speciesId,
         ]);
         $id = insert_id();
         if ($plant) {
-            q('UPDATE plants SET photo = ? WHERE id = ?', [$file, $plant['id']]);
+            q('UPDATE plants SET photo = ?, species_id = COALESCE(?, species_id) WHERE id = ?', [$file, $speciesId, $plant['id']]);
         }
         return $id;
     });
@@ -358,8 +370,8 @@ function diagnoses_link(string $id): never
     transaction(function () use ($u, $d, $b) {
         if (!empty($b['new_plant'])) {
             $name = clean_text($b['name'] ?? null, 80) ?: mb_substr($d['result']['planta_identificada']['nombre_comun'], 0, 80);
-            q('INSERT INTO plants (user_id, name, species, photo, water_every_days) VALUES (?, ?, ?, ?, ?)', [
-                $u['id'], $name, $d['result']['planta_identificada']['nombre_comun'], $d['photo'], $d['result']['riego_cada_dias'],
+            q('INSERT INTO plants (user_id, name, species, photo, water_every_days, species_id) VALUES (?, ?, ?, ?, ?, ?)', [
+                $u['id'], $name, $d['result']['planta_identificada']['nombre_comun'], $d['photo'], $d['result']['riego_cada_dias'], $d['species_id'],
             ]);
             $plant = owned_plant($u['id'], insert_id());
             sync_watering_reminder($u['id'], $plant);
@@ -367,6 +379,9 @@ function diagnoses_link(string $id): never
             $plant = owned_plant($u['id'], $b['plant_id'] ?? 0);
             if (!$plant['photo']) {
                 q('UPDATE plants SET photo = ? WHERE id = ?', [$d['photo'], $plant['id']]);
+            }
+            if ($d['species_id']) {
+                q('UPDATE plants SET species_id = ? WHERE id = ?', [$d['species_id'], $plant['id']]);
             }
         }
         q('UPDATE diagnoses SET plant_id = ? WHERE id = ?', [$plant['id'], $d['id']]);
@@ -526,6 +541,8 @@ function admin_overview(): never
             'diagnosesToday' => (int) scalar("SELECT COUNT(*) FROM diagnoses WHERE created_at >= datetime('now', '-1 day')"),
             'diagnosesMonth' => (int) scalar('SELECT COUNT(*) FROM diagnoses WHERE created_at >= ? AND demo = 0', [$month]),
             'costMonth' => round((float) scalar('SELECT COALESCE(SUM(cost_usd), 0) FROM diagnoses WHERE created_at >= ?', [$month]), 4),
+            'species' => (int) scalar('SELECT COUNT(*) FROM species'),
+            'speciesPending' => (int) scalar('SELECT COUNT(*) FROM species WHERE verificada = 0'),
             'costTotal' => round((float) scalar('SELECT COALESCE(SUM(cost_usd), 0) FROM diagnoses'), 4),
         ],
         'settings' => [
