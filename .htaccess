@@ -3,5 +3,5 @@
 Options -Indexes
 RewriteEngine On
 RewriteRule ^(vendor|test|scripts|dist|data|\.git)(/|$) - [F,L]
-RewriteRule ^(README\.md|package\.json|composer\.(json|lock)|\.gitignore)$ - [F,L]
+RewriteRule ^(README\.md|package\.json|composer\.(json|lock)|\.gitignore|skills-lock\.json)$ - [F,L]
 RewriteRule ^$ app/ [L]
