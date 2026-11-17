@@ -2,6 +2,6 @@
 # Esto bloquea el acceso a todo lo demás por si la carpeta del repositorio fuera accesible.
 Options -Indexes
 RewriteEngine On
-RewriteRule ^(vendor|test|scripts|dist|data|\.git)(/|$) - [F,L]
+RewriteRule ^(vendor|test|scripts|dist|data|\.git|\.claude)(/|$) - [F,L]
 RewriteRule ^(README\.md|package\.json|composer\.(json|lock)|\.gitignore|skills-lock\.json)$ - [F,L]
 RewriteRule ^$ app/ [L]
