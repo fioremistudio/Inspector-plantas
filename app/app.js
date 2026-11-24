@@ -351,10 +351,9 @@ async function maybeNotify(due) {
 
 // ---------- Vistas: acceso ----------
 
-function authShell(title, subtitle, form, footer = '') {
+function authShell(subtitle, form, footer = '') {
   render(html`<div class="auth-wrap">
-    ${title ? html`<img class="auth-logo logo-img" src="icons/logo-vertical.svg" alt="Fioremi Inspector" />
-    <h1 class="center">${title}</h1>` : html`<h1 class="auth-brand"><img class="auth-logo logo-img" src="icons/logo-vertical.svg" alt="Fioremi Inspector" /></h1>`}
+    <h1 class="auth-brand"><img class="auth-logo logo-img" src="icons/logo-vertical.svg" alt="Fioremi Inspector" /></h1>
     <p class="center muted">${subtitle}</p>
     <div class="card">${form}</div>
     ${footer}
@@ -368,7 +367,6 @@ const passwordField = (name = 'password', label = 'Contraseña', autocomplete = 
 function viewSetup() {
   if (!state.status.needsSetup) return (location.hash = '#/login');
   authShell(
-    '¡Te damos la bienvenida!',
     'Crea la cuenta de administración. Con ella podrás usar la app y, más adelante, dar acceso a tus clientes.',
     html`<form id="f">
       <div class="field"><label for="name">Tu nombre</label><input id="name" name="name" type="text" required autocomplete="name" /></div>
@@ -388,7 +386,6 @@ function viewSetup() {
 function viewLogin() {
   const reg = state.status.allowRegistration;
   authShell(
-    null,
     'Analiza tus plantas con inteligencia artificial.',
     html`<form id="f">
       <div class="field"><label for="email">Correo electrónico</label><input id="email" name="email" type="email" required autocomplete="email" /></div>
@@ -410,7 +407,6 @@ function viewLogin() {
 function viewRegister() {
   if (!state.status.allowRegistration) return (location.hash = '#/login');
   authShell(
-    'Crear cuenta',
     'Regístrate para analizar y cuidar tus plantas.',
     html`<form id="f">
       <div class="field"><label for="name">Tu nombre</label><input id="name" name="name" type="text" required autocomplete="name" /></div>
