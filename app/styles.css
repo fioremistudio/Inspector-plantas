@@ -334,3 +334,4 @@ dialog .modal-body { padding: 20px; max-height: 80vh; overflow-y: auto; }
   :root:not([data-theme="light"]) .logo-horizontal { padding: 4px 10px; }
 }
 :root[data-theme="dark"] .logo-horizontal { padding: 4px 10px; }
+.auth-brand { margin: 0; display: flex; justify-content: center; }

@@ -353,8 +353,8 @@ async function maybeNotify(due) {
 
 function authShell(title, subtitle, form, footer = '') {
   render(html`<div class="auth-wrap">
-    <img class="auth-logo logo-img" src="icons/logo-vertical.svg" alt="Fioremi Inspector" />
-    <h1 class="center">${title}</h1>
+    ${title ? html`<img class="auth-logo logo-img" src="icons/logo-vertical.svg" alt="Fioremi Inspector" />
+    <h1 class="center">${title}</h1>` : html`<h1 class="auth-brand"><img class="auth-logo logo-img" src="icons/logo-vertical.svg" alt="Fioremi Inspector" /></h1>`}
     <p class="center muted">${subtitle}</p>
     <div class="card">${form}</div>
     ${footer}
@@ -388,7 +388,7 @@ function viewSetup() {
 function viewLogin() {
   const reg = state.status.allowRegistration;
   authShell(
-    'Fioremi Inspector',
+    null,
     'Analiza tus plantas con inteligencia artificial.',
     html`<form id="f">
       <div class="field"><label for="email">Correo electrónico</label><input id="email" name="email" type="email" required autocomplete="email" /></div>
