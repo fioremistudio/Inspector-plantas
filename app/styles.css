@@ -162,7 +162,8 @@ input:focus, select:focus, textarea:focus, .btn:focus-visible { outline: 3px sol
 .error-msg { color: var(--bad); font-size: 0.9rem; margin: 6px 0 10px; }
 
 .auth-wrap { max-width: 420px; margin: 7vh auto 0; }
-.auth-logo { width: 120px; height: 120px; margin: 0 auto 8px; }
+.auth-logo { width: auto; height: 190px; margin: 0 auto 14px; }
+.logo-horizontal { height: 50px; width: auto; }
 
 /* Selección de foto */
 .photo-drop {
@@ -329,3 +330,7 @@ dialog .modal-body { padding: 20px; max-height: 80vh; overflow-y: auto; }
 .id-kicker { font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--primary); }
 .id-name { font-size: 1.9rem; margin: 6px 0 4px; }
 .id-sci { color: var(--muted); }
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .logo-horizontal { padding: 4px 10px; }
+}
+:root[data-theme="dark"] .logo-horizontal { padding: 4px 10px; }

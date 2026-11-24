@@ -201,7 +201,7 @@ function http_json(string $url): ?array
 {
     try {
         $res = (new GuzzleHttp\Client(['timeout' => 8, 'connect_timeout' => 5, 'http_errors' => false]))->get($url, [
-            'headers' => ['User-Agent' => 'FioremiInspector/1.0 (https://plantas.fioremi.com)', 'Accept' => 'application/json'],
+            'headers' => ['User-Agent' => 'FioremiInspector/1.0 (https://inspector.fioremi.com)', 'Accept' => 'application/json'],
         ]);
         if ($res->getStatusCode() !== 200) {
             return null;

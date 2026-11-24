@@ -353,7 +353,7 @@ async function maybeNotify(due) {
 
 function authShell(title, subtitle, form, footer = '') {
   render(html`<div class="auth-wrap">
-    <img class="auth-logo logo-img" src="icons/logo.png" alt="Logo de Fioremi" />
+    <img class="auth-logo logo-img" src="icons/logo-vertical.svg" alt="Fioremi Inspector" />
     <h1 class="center">${title}</h1>
     <p class="center muted">${subtitle}</p>
     <div class="card">${form}</div>

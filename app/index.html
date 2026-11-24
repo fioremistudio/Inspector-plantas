@@ -7,18 +7,19 @@
     <meta name="description" content="Analiza tus plantas con inteligencia artificial y recibe consejos para cuidarlas." />
     <meta name="theme-color" content="#B8325F" />
     <link rel="manifest" href="manifest.webmanifest" />
-    <link rel="icon" href="icons/favicon.png" type="image/png" />
+    <link rel="icon" href="icons/logo-icon.svg" type="image/svg+xml" />
+    <link rel="alternate icon" href="icons/favicon.png" type="image/png" />
     <link rel="apple-touch-icon" href="icons/apple-touch-icon.png" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="default" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500..800&family=Figtree:wght@400;500;600;700&display=swap" />
-    <link rel="stylesheet" href="styles.css?v=6" />
+    <link rel="stylesheet" href="styles.css?v=7" />
   </head>
   <body>
     <header class="topbar" id="topbar" hidden>
-      <a href="#/" class="brand"><img class="logo-img" src="icons/logo.png" alt="" width="40" height="40" /><span class="brand-name">Fioremi Inspector<small>Cuidado de plantas con IA</small></span></a>
+      <a href="#/" class="brand" aria-label="Fioremi Inspector, inicio"><img class="logo-img logo-horizontal" src="icons/logo-horizontal.svg" alt="Fioremi Inspector" width="116" height="50" /></a>
       <a href="#/cuenta" class="topbar-user" id="topbar-user" aria-label="Mi cuenta"></a>
     </header>
     <div id="demo-banner" class="demo-banner" hidden>
@@ -36,6 +37,6 @@
     </nav>
     <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
     <dialog id="modal"></dialog>
-    <script type="module" src="app.js?v=7"></script>
+    <script type="module" src="app.js?v=8"></script>
   </body>
 </html>

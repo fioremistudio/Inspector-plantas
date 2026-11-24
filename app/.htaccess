@@ -12,6 +12,10 @@ RewriteRule ^api/lib(/|$) - [F,L]
 RewriteCond %{REQUEST_URI} !/api/index\.php$
 RewriteRule ^api(/.*)?$ api/index.php [QSA,L]
 
+# La dirección antigua (plantas.fioremi.com) lleva a la nueva.
+RewriteCond %{HTTP_HOST} ^plantas\.fioremi\.com$ [NC]
+RewriteRule ^ https://inspector.fioremi.com%{REQUEST_URI} [L,R=301]
+
 # Forzar HTTPS (necesario para usar la cámara y para instalar la app).
 RewriteCond %{HTTPS} off
 RewriteCond %{HTTP:X-Forwarded-Proto} !https
